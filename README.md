@@ -99,6 +99,22 @@ cp .env.example .env
 
 `FEATHERLESS_API_KEY` is the one that matters. The rest are enhancements.
 
+### Before you teach: `/check`
+
+Open **`/check`** on the machine that will teach. It verifies the things no test suite can
+reach, because they are properties of that browser and that operating system: recognition
+support, a secure context, microphone permission, and — the one that catches people out —
+whether a voice actually exists for each language.
+
+Speech synthesis reports success for a language it has no voice for and then produces
+nothing. A lecture can look like it is working perfectly while every student hears silence.
+The page ends with the real two-voice output so you can hear it before the class does.
+
+**Windows ships no Indic or French voices by default.** If `/check` reports them missing:
+Settings → Time & language → Language & region → Add a language, tick **Speech** in the
+optional features, then restart the browser. Chrome also supplies network voices for many
+languages when online.
+
 ### Demo without a microphone
 
 A scripted lecture, played in at realistic speaking pace:

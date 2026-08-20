@@ -133,9 +133,14 @@ export default function Home() {
         </section>
 
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-ink-800 pt-6">
-          <Link to="/replay" className="text-sm text-ink-300 underline hover:text-ink-100">
-            Browse recorded lectures →
-          </Link>
+          <div className="flex flex-wrap gap-4">
+            <Link to="/replay" className="text-sm text-ink-300 underline hover:text-ink-100">
+              Browse recorded lectures →
+            </Link>
+            <Link to="/check" className="text-sm text-brand-400 underline hover:text-brand-500">
+              Pre-flight check →
+            </Link>
+          </div>
 
           <div className="flex flex-wrap gap-2">
             {services.map((s) => (
