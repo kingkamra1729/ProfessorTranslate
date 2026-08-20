@@ -11,6 +11,7 @@ import {
   runsFromPlainText,
   unmaskPartial,
   unmaskTerms,
+  voiceEmbeddedLatin,
   type TermMatcher,
 } from './glossary.js';
 
@@ -87,6 +88,7 @@ function registerGuidance(to: LangCode): string {
         'REGISTER: everyday spoken Hindi as heard in an Indian classroom, not literary or Sanskritised Hindi.',
         'Code-mix naturally. Keep in English the words people genuinely say in English: zero, energy, force, speed, direction, independent, system, value, graph, point, line, angle, positive, negative, increase, decrease, simple, example, use, matrix, curve, area, volume, mass, time.',
         'Avoid शुद्ध हिन्दी coinages. Say zero not शून्य, energy not ऊर्जा, direction not दिशा, independent not स्वतंत्र, system not प्रणाली, frequency not आवृत्ति.',
+        'Write English words in Latin script - graph, shift, zero - never transliterated into Devanagari as ग्राफ or शिफ्ट.',
         'Avoid the bookish आइए; prefer देखते हैं, करते हैं, समझते हैं - the way a teacher actually talks.',
       ].join('\n');
     case 'bn':
@@ -94,6 +96,7 @@ function registerGuidance(to: LangCode): string {
         'REGISTER: everyday spoken Bengali as heard in an Indian classroom, not literary or Sanskritised Bengali.',
         'Code-mix naturally. Keep in English the words people genuinely say in English: zero, energy, force, speed, direction, system, value, graph, point, line, angle, positive, negative, simple, example, matrix, curve, mass, time.',
         'Avoid heavy তৎসম vocabulary. Say zero not শূন্য, energy not শক্তি, direction not দিক, frequency not কম্পাঙ্ক.',
+        'Write English words in Latin script - graph, shift, zero - never transliterated into Bengali script.',
       ].join('\n');
     case 'fr':
       return [
@@ -369,7 +372,10 @@ export async function translateUtterance(input: TranslateInput): Promise<Transla
     utteranceId,
     lang: to,
     text: restored.text,
-    runs: restored.runs,
+    // English words the model kept for natural code-mixing get an English
+    // voice, so they are pronounced rather than transliterated by whichever
+    // synthesiser the student happens to have.
+    runs: voiceEmbeddedLatin(restored.runs, to, from),
     latencyMs: Date.now() - started,
     engine: 'llm',
   };

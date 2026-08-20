@@ -13,6 +13,7 @@ import {
   unmaskTerms,
   appendDroppedTerms,
   sentinel,
+  voiceEmbeddedLatin,
 } from './glossary.js';
 import { mergePacks } from '../data/glossary-packs.js';
 
@@ -151,6 +152,66 @@ console.log('\nrun merging');
     termRuns.map((r) => r.text).join('|') === 'eigenvalue|matrix', termRuns.map(r => r.text));
   check('no run reads as a fused non-word',
     !result.runs.some((r) => r.text.includes('eigenvaluematrix')), result.text);
+}
+
+console.log('\ncode-mixed loanwords');
+{
+  // Natural classroom Hindi keeps English words. They must be voiced in
+  // English rather than handed to a Hindi voice as Latin text, whose
+  // pronunciation then depends on whichever synthesiser the student's device
+  // happens to have.
+  const runs = voiceEmbeddedLatin(
+    [
+      { lang: 'hi', text: 'अगर हम ', isTerm: false },
+      { lang: 'en', text: 'frequency', isTerm: true },
+      { lang: 'hi', text: ' बढ़ाते हैं, तो graph दाईं तरफ shift होता है।', isTerm: false },
+    ],
+    'hi',
+    'en',
+  );
+
+  const english = runs.filter((r) => r.lang === 'en').map((r) => r.text);
+  check('embedded English words get an English voice',
+    english.includes('graph') && english.includes('shift'),
+    runs.map((r) => `${r.lang}:${r.text}`));
+  check('the protected term keeps its term flag',
+    runs.some((r) => r.text === 'frequency' && r.isTerm),
+    runs.filter((r) => r.isTerm).map((r) => r.text));
+  // isTerm drives the teal highlighting, which means "textbook vocabulary".
+  // An ordinary loanword must not dilute that signal.
+  check('loanwords are voiced in English but not marked as terms',
+    runs.filter((r) => r.isTerm).length === 1,
+    runs.filter((r) => r.isTerm).map((r) => r.text));
+  check('Hindi runs contain no Latin words',
+    runs.filter((r) => r.lang === 'hi').every((r) => !/[A-Za-z]{2,}/.test(r.text)),
+    runs.filter((r) => r.lang === 'hi').map((r) => r.text));
+  check('reassembling the runs reproduces the sentence exactly',
+    runs.map((r) => r.text).join('') ===
+      'अगर हम frequency बढ़ाते हैं, तो graph दाईं तरफ shift होता है।',
+    runs.map((r) => r.text).join(''));
+}
+
+{
+  // French is written in Latin script, so an English word is indistinguishable
+  // from its surroundings; splitting would put an English voice on ordinary
+  // French words.
+  const runs = voiceEmbeddedLatin(
+    [{ lang: 'fr', text: 'Donc la courbe monte vers la droite.', isTerm: false }],
+    'fr',
+    'en',
+  );
+  check('Latin-script targets are left alone', runs.length === 1 && runs[0].lang === 'fr', runs);
+}
+
+{
+  const runs = voiceEmbeddedLatin(
+    [{ lang: 'hi', text: 'यह x और y के बीच है।', isTerm: false }],
+    'hi',
+    'en',
+  );
+  check('single-letter variable names are voiced in English',
+    runs.filter((r) => r.lang === 'en').map((r) => r.text).join('|') === 'x|y',
+    runs.map((r) => `${r.lang}:${r.text}`));
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

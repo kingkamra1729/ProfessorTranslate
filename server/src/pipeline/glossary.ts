@@ -1,4 +1,4 @@
-import type { GlossaryTerm, LangCode, SpeechRun } from '@suvidha/shared';
+import { LANGUAGES, type GlossaryTerm, type LangCode, type SpeechRun } from '@suvidha/shared';
 
 /**
  * Term protection.
@@ -317,6 +317,76 @@ export function appendDroppedTerms(
 function targetLangOf(result: UnmaskResult): LangCode {
   const explanation = result.runs.find((r) => !r.isTerm);
   return explanation?.lang ?? result.runs[0]?.lang ?? 'en';
+}
+
+/**
+ * Gives embedded English words an English voice.
+ *
+ * Natural Hindi and Bengali classroom speech is full of English: "अगर हम
+ * frequency बढ़ाते हैं, तो graph दाईं तरफ shift होता है". Asking the model for
+ * that register is what makes the translation understandable - but it leaves
+ * Latin words sitting inside a run tagged for a Hindi voice, and whether that
+ * sounds like "graph" or like nonsense depends entirely on which synthesiser
+ * the student's device happens to have.
+ *
+ * So Latin spans are split out and voiced in the language of instruction, which
+ * is what a bilingual speaker does anyway. They are deliberately NOT marked as
+ * terms: `isTerm` drives the teal highlighting in the subtitles and means
+ * "protected vocabulary you will meet in the textbook". "graph" is an ordinary
+ * loanword, not a term, and marking it as one would dilute a signal students
+ * are meant to learn to read.
+ *
+ * A no-op for languages already written in Latin script, where an English word
+ * is indistinguishable from its surroundings and needs no special voice.
+ */
+export function voiceEmbeddedLatin(
+  runs: SpeechRun[],
+  targetLang: LangCode,
+  instructionLang: LangCode,
+): SpeechRun[] {
+  if (LANGUAGES[targetLang].latinScript) return runs;
+  if (!LANGUAGES[instructionLang].latinScript) return runs;
+
+  const out: SpeechRun[] = [];
+
+  for (const run of runs) {
+    if (run.isTerm || run.lang !== targetLang) {
+      out.push(run);
+      continue;
+    }
+
+    // A Latin word, allowing the punctuation that sits inside one.
+    const re = /[A-Za-z][A-Za-z0-9'’.\-]*/g;
+    let cursor = 0;
+    let m: RegExpExecArray | null;
+
+    while ((m = re.exec(run.text)) !== null) {
+      if (m.index > cursor) {
+        out.push({ lang: targetLang, text: run.text.slice(cursor, m.index), isTerm: false });
+      }
+      out.push({ lang: instructionLang, text: m[0], isTerm: false });
+      cursor = m.index + m[0].length;
+    }
+
+    if (cursor < run.text.length) {
+      out.push({ lang: targetLang, text: run.text.slice(cursor), isTerm: false });
+    }
+  }
+
+  // Merging keeps the synthesiser from being handed a string of one-word
+  // utterances, each carrying its own start-up delay. Terms stay separate for
+  // the reason given in `unmaskTerms`.
+  const merged: SpeechRun[] = [];
+  for (const run of out) {
+    if (!run.text) continue;
+    const prev = merged[merged.length - 1];
+    if (prev && prev.lang === run.lang && !prev.isTerm && !run.isTerm) {
+      prev.text += run.text;
+      continue;
+    }
+    merged.push({ ...run });
+  }
+  return merged;
 }
 
 /**

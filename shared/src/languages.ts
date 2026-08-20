@@ -22,11 +22,21 @@ export interface Language {
   ttsLocales: string[];
   /** Script direction. All four are LTR but downstream languages may not be. */
   dir: 'ltr' | 'rtl';
+  /**
+   * Whether the language is written in Latin script.
+   *
+   * Decides whether an English word embedded in a translation is visible as
+   * such. In Devanagari or Bengali text a Latin word stands out and can be
+   * given its own voice; in French it is indistinguishable from the
+   * surrounding text and must not be.
+   */
+  latinScript: boolean;
 }
 
 export const LANGUAGES: Record<LangCode, Language> = {
   en: {
     code: 'en',
+    latinScript: true,
     name: 'English',
     nativeName: 'English',
     sttLocale: 'en-IN',
@@ -35,6 +45,7 @@ export const LANGUAGES: Record<LangCode, Language> = {
   },
   hi: {
     code: 'hi',
+    latinScript: false,
     name: 'Hindi',
     nativeName: 'हिन्दी',
     sttLocale: 'hi-IN',
@@ -43,6 +54,7 @@ export const LANGUAGES: Record<LangCode, Language> = {
   },
   bn: {
     code: 'bn',
+    latinScript: false,
     name: 'Bengali',
     nativeName: 'বাংলা',
     sttLocale: 'bn-IN',
@@ -51,6 +63,7 @@ export const LANGUAGES: Record<LangCode, Language> = {
   },
   fr: {
     code: 'fr',
+    latinScript: true,
     name: 'French',
     nativeName: 'Français',
     sttLocale: 'fr-FR',
