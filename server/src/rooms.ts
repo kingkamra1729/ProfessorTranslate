@@ -27,6 +27,15 @@ export interface Listener {
   lang: LangCode;
 }
 
+/**
+ * How recently an identical final must have arrived to count as a duplicate.
+ *
+ * Short on purpose. A lecturer does repeat themselves for emphasis, and
+ * suppressing that would be its own bug - but not usually within four seconds,
+ * and not word for word.
+ */
+const DUPLICATE_WINDOW_MS = 4000;
+
 function send(socket: WebSocket, msg: ServerMessage): void {
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(msg));
@@ -71,6 +80,18 @@ export class Room {
    * will never come.
    */
   private lastActivityAt = Date.now();
+
+  /**
+   * The last final text accepted, and when.
+   *
+   * A second line of defence against duplicated speech. The client has its own
+   * guard, but two professor consoles open at once - a reload that left the old
+   * tab running, a laptop and a tablet - both capture the same audio and both
+   * send it, and no client-side check can see the other. Identical text within
+   * a few seconds is a duplicate, not a lecturer saying the same sentence twice
+   * word for word.
+   */
+  private lastFinal = { text: '', at: 0 };
 
   private nextSeq = 0;
   private pendingByLang = new Map<LangCode, Map<number, Translation>>();
@@ -225,6 +246,13 @@ export class Room {
       this.broadcastAll({ type: 'utterance', utterance: interim });
       return;
     }
+
+    const now = Date.now();
+    if (trimmed === this.lastFinal.text && now - this.lastFinal.at < DUPLICATE_WINDOW_MS) {
+      console.warn(`[room ${this.meta.id}] dropped duplicate speech: ${trimmed.slice(0, 60)}`);
+      return;
+    }
+    this.lastFinal = { text: trimmed, at: now };
 
     // Re-cut the final result on sentence boundaries before translating.
     for (const chunk of this.buffer.push(trimmed)) {

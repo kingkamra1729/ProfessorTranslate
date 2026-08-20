@@ -93,6 +93,14 @@ export class Recognizer {
   private state: RecognizerState = 'idle';
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private consecutiveErrors = 0;
+  /**
+   * The last final text delivered, across sessions.
+   *
+   * Guards the seam that per-session indices cannot: a restart begins fresh
+   * indices, and Chrome sometimes repeats the tail of the previous session in
+   * the first result of the next one.
+   */
+  private lastFinalText = '';
 
   constructor(
     private lang: LangCode,
@@ -140,21 +148,41 @@ export class Recognizer {
       this.setState('listening');
     };
 
+    // Highest result index already delivered as final, for this session.
+    //
+    // `event.resultIndex` is the first result that *changed*, which is not the
+    // same as the first one we have not seen. Chrome fires `onresult` many
+    // times while revising a phrase and routinely reports an index at or below
+    // a result already delivered as final. Trusting it re-emits that final on
+    // every subsequent fire, so one spoken sentence arrives as a growing
+    // stutter - "transverse energy", "transverse energy transverse energy",
+    // and so on - which is then dutifully translated, repetition and all.
+    //
+    // Indices are per recognition session and this closure belongs to one
+    // session, so restarting resets it correctly.
+    let deliveredThrough = -1;
+
     rec.onresult = (event) => {
-      // `resultIndex` marks where new content starts; everything before it has
-      // already been delivered. Interim and final results are reported
-      // separately because only finals are worth translating.
       let interim = '';
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const transcript = result[0]?.transcript ?? '';
+
         if (result.isFinal) {
+          if (i <= deliveredThrough) continue; // already sent; do not repeat it
+          deliveredThrough = i;
+
           const text = transcript.trim();
-          if (text) this.events.onResult?.(text, true);
+          if (text && text !== this.lastFinalText) {
+            this.lastFinalText = text;
+            this.events.onResult?.(text, true);
+          }
         } else {
           interim += transcript;
         }
       }
+
       const trimmed = interim.trim();
       if (trimmed) this.events.onResult?.(trimmed, false);
     };

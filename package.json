@@ -15,7 +15,7 @@
     "dev:web": "npm run dev --workspace web",
     "build": "npm run build --workspace web",
     "start": "npm run start --workspace server",
-    "test": "npm run test --workspace server",
+    "test": "npm run test --workspace server && npm run test:asr",
     "test:live": "npm run test:live --workspace server",
     "simulate": "npm run simulate --workspace server --",
     "doctor": "npm run doctor --workspace server",
@@ -24,7 +24,8 @@
     "test:reliability": "npm run test:reliability --workspace server --",
     "test:scout": "npm run test:scout --workspace server",
     "check:deploy": "node scripts/check-case.mjs",
-    "test:extract": "npm run test:extract --workspace server"
+    "test:extract": "npm run test:extract --workspace server",
+    "test:asr": "tsx web/src/lib/asr.test.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
