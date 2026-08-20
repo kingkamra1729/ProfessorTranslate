@@ -129,6 +129,7 @@ npm test           # term-protection engine, 21 assertions, no network
 npm run test:live  # full WebSocket pipeline against a running server, 23 assertions
 npm run test:features  # Wolfram render + Firecrawl import, 12 assertions (spends credits)
 npm run bench      # times candidate models on a realistic generation
+npm run test:scout     # missing-term suggestions reach the professor, live
 npm run test:reliability  # term survival rate over many runs (see below)
 ```
 

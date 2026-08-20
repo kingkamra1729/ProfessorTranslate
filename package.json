@@ -21,7 +21,8 @@
     "doctor": "npm run doctor --workspace server",
     "test:features": "npm run test:features --workspace server",
     "bench": "npm run bench --workspace server",
-    "test:reliability": "npm run test:reliability --workspace server --"
+    "test:reliability": "npm run test:reliability --workspace server --",
+    "test:scout": "npm run test:scout --workspace server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

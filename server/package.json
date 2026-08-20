@@ -13,7 +13,8 @@
     "doctor": "tsx src/doctor.ts",
     "test:features": "tsx src/features.test.ts",
     "bench": "tsx src/bench.ts",
-    "test:reliability": "tsx src/reliability.test.ts"
+    "test:reliability": "tsx src/reliability.test.ts",
+    "test:scout": "tsx src/scout-e2e.test.ts"
   },
   "dependencies": {
     "@suvidha/shared": "*",
