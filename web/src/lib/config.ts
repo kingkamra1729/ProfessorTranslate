@@ -1,20 +1,15 @@
 /**
  * Where the realtime server lives.
  *
- * Two deployment shapes are supported, and the difference is one env var:
+ * Normally: the same origin. Suvidha deploys as one service - the Node server
+ * builds and serves this frontend - so every request is relative and there is
+ * nothing to configure.
  *
- *   Single host  - the Node server serves the built frontend too. Same origin,
- *                  so VITE_SERVER_URL is unset and every request is relative.
- *
- *   Split host   - the frontend is on a static/edge platform (Vercel) and the
- *                  server is somewhere that can hold a WebSocket open for an
- *                  hour. VITE_SERVER_URL points at that server.
- *
- * The split shape is the one Vercel requires. Vercel runs serverless functions:
- * they cannot hold a persistent socket, they do not share memory between
- * invocations, and they time out long before a lecture ends. The lecture rooms
- * in `server/src/rooms.ts` are live in-memory objects with a professor and a set
- * of listeners attached, which is precisely what serverless has nowhere to put.
+ * VITE_SERVER_URL exists for the one case where the frontend is hosted
+ * separately from the server. That arrangement needs a server that can hold a
+ * WebSocket open for the length of a lecture, since a lecture room is a live
+ * in-memory object with the professor's socket and every student's socket
+ * attached; a serverless platform has nowhere to put it.
  */
 
 const configured = (import.meta.env.VITE_SERVER_URL ?? '').trim().replace(/\/+$/, '');

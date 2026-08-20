@@ -12,7 +12,8 @@
     "simulate": "tsx src/simulate.ts",
     "doctor": "tsx src/doctor.ts",
     "test:features": "tsx src/features.test.ts",
-    "bench": "tsx src/bench.ts"
+    "bench": "tsx src/bench.ts",
+    "test:reliability": "tsx src/reliability.test.ts"
   },
   "dependencies": {
     "@suvidha/shared": "*",

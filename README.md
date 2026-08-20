@@ -64,7 +64,8 @@ guessing, and a wrong guess sends a Hindi voice at a Latin word.
 | **Any language per student** | One lecture, each student on a different language, switchable mid-sentence |
 | **Diagrams** | Wolfram-rendered plots proposed from the lecture content — professor approves before the class sees anything |
 | **Accessibility** | Every diagram carries a spoken description, translated the same way. Screen-reader live regions throughout |
-| **Recordings** | Archived as *text*, not audio — so replay works in a language nobody chose during the lecture, at any speed |
+| **Missing terms caught live** | The system watches for subject vocabulary the glossary lacks and offers it to the professor mid-lecture |
+| **Recordings** | Archived as *text*, not audio — so replay renders into a language nobody chose during the lecture, on demand |
 
 ---
 
@@ -128,64 +129,56 @@ npm test           # term-protection engine, 21 assertions, no network
 npm run test:live  # full WebSocket pipeline against a running server, 23 assertions
 npm run test:features  # Wolfram render + Firecrawl import, 12 assertions (spends credits)
 npm run bench      # times candidate models on a realistic generation
+npm run test:reliability  # term survival rate over many runs (see below)
 ```
+
+`test:reliability` exists because term preservation is the one property here that is not
+deterministic — it depends on a model copying sentinel tokens through a sentence it is
+rewriting. A single passing test says nothing about a property that fails one time in
+twenty, and one in twenty across a lecture is several mistranslated terms per class. It
+runs the same translations repeatedly and reports the loss rate, failing above 3%.
+Currently **0% over 162 translations**, median latency 1.3–1.8s.
 
 ---
 
 ## Deploying
 
-### The constraint
+One service on [Render](https://render.com), which is in the sponsor list.
 
-**Vercel cannot host the server.** It runs serverless functions, which cannot hold a
-WebSocket open, do not share memory between invocations, and time out long before a lecture
-ends. A lecture room in `server/src/rooms.ts` is a live object holding one professor socket
-and a set of student sockets — there is nowhere in a serverless model to put it.
-
-So: frontend on Vercel, server on something always-on. Or put both on the always-on host
-and skip Vercel entirely.
-
-### Option A — single host (simplest)
-
-The server serves the built frontend itself, so everything is one origin, one URL, no CORS
-and nothing to configure.
+The server builds and serves the frontend itself, so the professor console, the student view,
+the REST API and the WebSocket all sit behind a single origin. That removes three whole
+classes of failure by construction: CORS, mixed content (an `https` page cannot open a
+`ws://` socket), and a frontend baked against a stale server URL.
 
 ```bash
-npm run build && npm start
+# what Render runs
+npm install && npm run build   # build
+npm start                      # start
 ```
 
-Deploy that with the included `Dockerfile` to Railway, Fly.io, Cloud Run, or anything that
-keeps a container running. Set `FEATHERLESS_API_KEY` in the host's dashboard.
+**Deploy:** push to GitHub → *New → Blueprint* on Render → pick the repo. `render.yaml`
+configures everything; set `FEATHERLESS_API_KEY`, `WOLFRAM_APP_ID` and `FIRECRAWL_API_KEY`
+in the dashboard when prompted. Never in the repo.
 
-### Option B — Vercel frontend + Render server
+A `Dockerfile` is included too, so Railway, Fly.io or Cloud Run work identically.
 
-**1. Server on Render.** Push to GitHub, then *New → Blueprint* on [render.com](https://render.com)
-and select the repo. `render.yaml` configures it; set `FEATHERLESS_API_KEY` in the dashboard
-when prompted. Note the URL it gives you, e.g. `https://suvidha-server.onrender.com`.
+### Why not Vercel
 
-**2. Frontend on Vercel.** Import the repo. `vercel.json` configures the build. Add one
-environment variable:
+It cannot host this. Vercel runs serverless functions: they cannot hold a WebSocket open,
+they do not share memory between invocations, and they time out long before a lecture ends.
+A lecture room in `server/src/rooms.ts` is a live object holding the professor's socket and
+every student's socket for the length of a class. Deploying there would give you a working
+homepage that nobody can ever join.
 
-```
-VITE_SERVER_URL = https://suvidha-server.onrender.com
-```
+### Deployment notes
 
-It must be `https://` — a page served over HTTPS cannot open a `ws://` connection, and the
-browser error does not say so. The app checks for this and shows a banner rather than
-leaving you to guess.
-
-**3. Pin the origin** (optional). Set `ALLOWED_ORIGINS` on Render to your Vercel URL.
-
-Vercel env vars are build-time for `VITE_*`, so **redeploy after changing it**.
-
-### Deployment gotchas
-
-- **Render's free tier sleeps** after ~15 minutes idle and takes ~30s to wake. Load the
-  professor console a minute before the demo, or use a paid tier.
-- **Recordings live on disk.** Most hosts reset the filesystem on redeploy. Point `DATA_DIR`
-  at a mounted disk to keep them.
-- **Rooms are in memory.** Restarting the server ends any live lecture. Fine for a single
-  instance; running more than one would need shared state.
-- **Speech recognition needs HTTPS** (or localhost). Both Vercel and Render give you that.
+- **Render's free tier sleeps** after ~15 minutes idle and takes ~30s to wake. Open the
+  professor console a minute before demoing.
+- **Recordings live on disk**, and free tiers reset the filesystem on redeploy. Attach a
+  disk and point `DATA_DIR` at it to keep them. Live lectures are unaffected.
+- **Rooms are in memory.** Restarting the server ends any live lecture. Fine on one
+  instance; more than one would need shared state.
+- **Speech recognition requires HTTPS** (or localhost). Render provides it.
 
 ### Never commit secrets
 
@@ -196,56 +189,7 @@ Verify before pushing:
 git status --porcelain | grep -E "\.env$"
 ```
 
-That must print nothing. Keys belong in the host's dashboard, not the repo.
-
----
-
-## How it is put together
-
-```
-shared/          Protocol types shared by both ends. SpeechRun is the important one.
-
-server/
-  pipeline/
-    glossary.ts     Term detection, masking, and the run split. The core.
-    translate.ts    Prompting, output hygiene, caching, graceful degradation.
-    segment.ts      Re-cuts recognition results on sentence boundaries.
-    visualize.ts    Concept detection → diagram spec → approval gate.
-    auto-glossary.ts Extracts vocabulary from course material.
-  providers/        Featherless (translation), Wolfram (plots), Firecrawl (import).
-  rooms.ts          One professor, many students, fan-out per language.
-  store.ts          Lecture archive, as plain JSON.
-
-web/
-  lib/tts.ts        Multi-voice synthesis queue. The other core file.
-  lib/asr.ts        Web Speech recognition, and the restart loop it needs.
-  routes/           Professor console, student listener, replay.
-```
-
-### Decisions worth knowing about
-
-**Translation is driven by who is listening.** Rendering a lecture into Bengali that nobody
-is listening to costs latency for the students who *are* listening, because the calls share
-a rate limit. Replay translates on demand instead.
-
-**Falling behind is handled explicitly.** Translation plus synthesis is slower than speech.
-A queue that never drops anything drifts further behind with every sentence until the
-student is hearing a different paragraph than the one on the board. Past three queued
-utterances Suvidha discards the oldest — the one furthest behind and least useful — and
-tells the student it did.
-
-**Nothing generated reaches students unreviewed.** Diagram suggestions go to the professor,
-not the class. An unreviewed AI diagram on two hundred screens mid-lecture is a way to teach
-the wrong thing very efficiently. Rendering is deferred to approval, so a dismissed
-suggestion never spends a Wolfram credit.
-
-**Recordings store text, not audio.** Audio would fix the language at recording time. Text
-plus translations can be re-voiced later in a language nobody chose during the lecture, at
-half speed, or by a screen reader instead of by us.
-
-**Interim results are never translated.** Speech recognition revises them two or three times
-a second; translating a sentence that is about to change wastes the call and makes the audio
-stutter.
+That must print nothing. Keys belong in Render's dashboard.
 
 ---
 
@@ -270,6 +214,17 @@ gate pressure, so "the demo felt slow" is diagnosable.
 **Don't validate a key by listing models.** `/v1/models` is a 7.7 MB response covering
 40,000+ models and takes several seconds. Using it as a health check makes a perfectly good
 key look broken. `npm run doctor` authenticates with a two-token completion instead.
+
+## Which sponsor tools are used, and which are not
+
+**Used, because they do the job:** Featherless (translation, glossary extraction, term
+scouting, diagram specs), Wolfram (plot rendering and computation), Firecrawl (course
+material → glossary), Render (hosting).
+
+**Not used:** ProtoFlow is an AI PCB schematic tool, Momen is a no-code app builder, and
+Perfect Corp makes beauty and AR SDKs. None of them solve a problem this product has.
+Wiring a PCB designer into a lecture translator to collect a logo would be a worse project,
+not a better one.
 
 ## Speech, and the gap in the sponsor credits
 

@@ -160,6 +160,23 @@ export interface LectureRecording extends LectureMeta {
  * WebSocket protocol
  * ------------------------------------------------------------------ */
 
+/**
+ * Terms the system noticed the professor using that are not yet protected.
+ *
+ * The glossary is the single point of failure in the whole design: a term that
+ * is not in it is a term the model is free to translate. Packs and imports get
+ * most of the way, but every lecture has vocabulary nobody thought to list -
+ * and the moment it is spoken it is already too late for that sentence.
+ */
+export interface TermSuggestion {
+  term: string;
+  aliases: string[];
+  /** Why the system thinks this is subject vocabulary. Shown to the professor. */
+  reason: string;
+  /** The sentence it was heard in, so the professor can judge in context. */
+  heardIn: string;
+}
+
 /** Client -> server. */
 export type ClientMessage =
   | { type: 'prof:join'; lectureId: string }
@@ -167,6 +184,8 @@ export type ClientMessage =
   | { type: 'prof:end' }
   | { type: 'prof:viz-decision'; vizId: string; approve: boolean }
   | { type: 'prof:request-viz'; prompt: string }
+  | { type: 'prof:accept-terms'; terms: TermSuggestion[] }
+  | { type: 'prof:dismiss-terms' }
   | { type: 'student:join'; lectureId: string; lang: LangCode }
   | { type: 'student:set-lang'; lang: LangCode }
   | { type: 'ping' };
@@ -180,5 +199,6 @@ export type ServerMessage =
   | { type: 'viz'; viz: VizSpec }
   | { type: 'listeners'; counts: Partial<Record<LangCode, number>>; total: number }
   | { type: 'glossary'; glossary: GlossaryTerm[] }
+  | { type: 'term-suggestions'; suggestions: TermSuggestion[] }
   | { type: 'lecture-ended'; lectureId: string }
   | { type: 'pong' };

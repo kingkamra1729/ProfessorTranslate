@@ -223,9 +223,16 @@ export function unmaskTerms(
   const pushRun = (text: string, lang: LangCode, isTerm: boolean) => {
     if (!text) return;
     const prev = runs[runs.length - 1];
-    // Merge adjacent runs of the same kind, so the synthesiser is not handed a
-    // long tail of one-word utterances each carrying its own start-up delay.
-    if (prev && prev.lang === lang && prev.isTerm === isTerm) {
+    // Merge adjacent explanation runs, so the synthesiser is not handed a long
+    // tail of one-word utterances each carrying its own start-up delay.
+    //
+    // Term runs are never merged. When a model emits two sentinels with nothing
+    // between them - "⟦0⟧⟦1⟧", which happens occasionally - the empty gap means
+    // the second term would be appended to the first, producing a single run
+    // reading "eigenvaluematrix". That is two distinct pieces of vocabulary
+    // fused into one non-word, and the English voice would pronounce it as
+    // written. Keeping term runs separate preserves the boundary.
+    if (prev && prev.lang === lang && prev.isTerm === isTerm && !isTerm) {
       prev.text += text;
       return;
     }
@@ -280,12 +287,36 @@ export function appendDroppedTerms(
 
   if (dropped.length === 0) return result;
 
-  const suffix = ` (${dropped.join(', ')})`;
+  // Built as separate runs rather than one blob so that each recovered term is
+  // still its own term run: the brackets and separators are explanation, spoken
+  // by the target-language voice, while the terms themselves keep the
+  // instruction-language voice. A single fused run would have the English voice
+  // reading "open paren eigenvector close paren", and would break the rule that
+  // a term run contains exactly one term.
+  const runs: SpeechRun[] = [...result.runs, { lang: targetLangOf(result), text: ' (', isTerm: false }];
+
+  dropped.forEach((term, i) => {
+    if (i > 0) runs.push({ lang: targetLangOf(result), text: ', ', isTerm: false });
+    runs.push({ lang: instructionLang, text: term, isTerm: true });
+  });
+  runs.push({ lang: targetLangOf(result), text: ')', isTerm: false });
+
   return {
-    text: result.text + suffix,
-    runs: [...result.runs, { lang: instructionLang, text: suffix, isTerm: true }],
+    text: `${result.text} (${dropped.join(', ')})`,
+    runs,
     missing: result.missing,
   };
+}
+
+/**
+ * The language the explanation runs are in.
+ *
+ * Recovered from the existing runs rather than passed in, so the repair cannot
+ * disagree with the translation it is repairing.
+ */
+function targetLangOf(result: UnmaskResult): LangCode {
+  const explanation = result.runs.find((r) => !r.isTerm);
+  return explanation?.lang ?? result.runs[0]?.lang ?? 'en';
 }
 
 /**

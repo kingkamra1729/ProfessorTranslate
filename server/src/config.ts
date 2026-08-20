@@ -56,9 +56,9 @@ export const config = {
   /**
    * Origins allowed to call this server.
    *
-   * Empty means "reflect whatever origin asks", which is right for local
-   * development and for a hackathon demo where the Vercel preview URL changes
-   * on every push. Set it in production to pin the deployment.
+   * Empty means "reflect whatever origin asks". In the normal single-host
+   * deployment nothing cross-origin happens at all, so this stays empty; it
+   * matters only if the frontend is ever hosted separately.
    */
   allowedOrigins: list('ALLOWED_ORIGINS'),
 

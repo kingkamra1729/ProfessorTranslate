@@ -1,18 +1,24 @@
-# Render blueprint for the Suvidha realtime server.
+# Render blueprint — the whole of Suvidha, one service.
 #
-# The frontend goes to Vercel; this is the half Vercel cannot host, because a
-# lecture room is a live in-memory object holding one professor socket and a set
-# of student sockets open for the length of a class.
+# The server builds and serves the frontend itself, so the professor console,
+# the student view, the REST API and the WebSocket all sit behind a single
+# origin. That removes, by construction, the three things most likely to break a
+# split deployment the night before a demo: CORS, mixed content (an https page
+# cannot open a ws:// socket), and a frontend baked against a stale server URL.
+#
+# It also has to be one always-on service rather than serverless. A lecture room
+# is a live in-memory object holding the professor's socket and every student's
+# socket, open for the length of a class.
 #
 # Deploy:  push to GitHub, then New > Blueprint on render.com and pick the repo.
-# Then set FEATHERLESS_API_KEY in the Render dashboard - never in this file.
+# Set the keys in the dashboard when prompted - never in this file.
 
 services:
   - type: web
-    name: suvidha-server
+    name: suvidha
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -25,7 +31,21 @@ services:
         sync: false
       - key: FIRECRAWL_API_KEY
         sync: false
-      - key: ALLOWED_ORIGINS
-        sync: false
+
       - key: NODE_VERSION
         value: "22"
+
+      # Serve the built frontend from this same process. This is what makes it
+      # one service instead of two.
+      - key: SERVE_STATIC
+        value: "true"
+
+      # Everything is same-origin here, so no allow-list is needed.
+      - key: ALLOWED_ORIGINS
+        value: ""
+
+      # Render's free tier has an ephemeral filesystem: recordings written here
+      # are lost on redeploy. Attach a disk and point DATA_DIR at it to keep
+      # them. Live lectures are unaffected either way.
+      - key: DATA_DIR
+        value: /opt/render/project/src/data

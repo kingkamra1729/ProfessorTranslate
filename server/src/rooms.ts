@@ -6,11 +6,14 @@ import {
   type LangCode,
   type LectureMeta,
   type ServerMessage,
+  type TermSuggestion,
+  type Translation,
   type Utterance,
   type VizSpec,
 } from '@suvidha/shared';
 import { buildMatcher, type TermMatcher } from './pipeline/glossary.js';
 import { UtteranceBuffer } from './pipeline/segment.js';
+import { scoutTerms, suggestionToTerm } from './pipeline/term-scout.js';
 import { translateUtterance } from './pipeline/translate.js';
 import { LectureAccumulator } from './store.js';
 
@@ -38,6 +41,33 @@ export class Room {
   private professor: WebSocket | null = null;
   private glossaryTerms: GlossaryTerm[];
   private ended = false;
+
+  /**
+   * Ordering state.
+   *
+   * Sentences are numbered as they are cut from the speech stream, while still
+   * in spoken order, and each language keeps its own cursor. Translations that
+   * finish early wait in `pendingByLang` until everything before them has gone
+   * out, so a student never hears the second sentence of a thought before the
+   * first.
+   */
+  private nextSeq = 0;
+  private pendingByLang = new Map<LangCode, Map<number, Translation>>();
+  private nextEmitByLang = new Map<LangCode, number>();
+  /**
+   * Which sentences were dispatched for each language.
+   *
+   * Recorded synchronously at dispatch, before any await. A language only ever
+   * waits on sentences that were actually sent for translation in that
+   * language, which is what lets a student who switches language mid-lecture -
+   * or joins late - receive the very next sentence instead of waiting behind
+   * sequence numbers that were never theirs.
+   */
+  private dispatchedByLang = new Map<LangCode, Set<number>>();
+  /** Suggestions awaiting the professor's decision. */
+  private pendingSuggestions: TermSuggestion[] = [];
+  /** Terms already offered, so a rejected one is not proposed again. */
+  private offered = new Set<string>();
 
   constructor(
     readonly meta: LectureMeta,
@@ -192,15 +222,26 @@ export class Room {
       final: true,
     };
 
+    // Sequence number assigned here, where chunks are still in spoken order.
+    const seq = this.nextSeq++;
+
     this.accumulator.addUtterance(utterance);
     this.broadcastAll({ type: 'utterance', utterance });
 
     const targets = this.activeLangs();
     if (targets.length === 0) return;
 
-    // Each language is dispatched independently and delivered the moment it
-    // lands. Waiting for all of them would hold every student to the speed of
-    // the slowest rendering.
+    // Recorded before any await, so the dispatch record is complete for this
+    // sequence before a translation for it can possibly come back.
+    for (const lang of targets) {
+      const set = this.dispatchedByLang.get(lang) ?? new Set<number>();
+      set.add(seq);
+      this.dispatchedByLang.set(lang, set);
+    }
+
+    // Languages are dispatched independently, so a French student never waits
+    // on the Bengali rendering. But sentences within one language must still
+    // arrive in the order they were spoken - see `emitInOrder`.
     await Promise.all(
       targets.map(async (lang) => {
         const translation = await translateUtterance({
@@ -211,10 +252,61 @@ export class Room {
           matcher: this.matcher,
         });
         this.accumulator.addTranslation(translation);
-        this.broadcastToStudents({ type: 'translation', translation }, lang);
-        if (this.professor) send(this.professor, { type: 'translation', translation });
+        this.emitInOrder(lang, seq, translation);
       }),
     );
+  }
+
+  /**
+   * Delivers translations to students in the order the sentences were spoken.
+   *
+   * A single recognition result often contains two or three sentences, and they
+   * are translated concurrently. The short one finishes first. Broadcasting on
+   * completion therefore delivers them out of order, and while the subtitle view
+   * survives that - it places lines by utterance id - the audio does not. The
+   * student simply hears the second sentence before the first, with nothing on
+   * screen to indicate it happened.
+   *
+   * So a completed translation waits until every earlier sentence in its own
+   * language has gone out. Per language, because a slow Bengali rendering must
+   * not hold up French.
+   */
+  private emitInOrder(lang: LangCode, seq: number, translation: Translation): void {
+    const pending = this.pendingByLang.get(lang) ?? new Map<number, Translation>();
+    pending.set(seq, translation);
+    this.pendingByLang.set(lang, pending);
+    this.drain(lang);
+  }
+
+  /**
+   * Sends everything that is now contiguous from this language's cursor.
+   *
+   * The cursor advances past any sequence that was never dispatched for this
+   * language, which covers both a sentence spoken while nobody was listening
+   * and every sentence that preceded a student switching into this language.
+   * It stops at a dispatched sequence whose translation has not arrived yet -
+   * that one is genuinely still in flight and everything after it must wait.
+   */
+  private drain(lang: LangCode): void {
+    const pending = this.pendingByLang.get(lang);
+    const dispatched = this.dispatchedByLang.get(lang);
+    if (!pending || !dispatched) return;
+
+    let next = this.nextEmitByLang.get(lang) ?? 0;
+    while (next < this.nextSeq) {
+      if (!dispatched.has(next)) {
+        next++;
+        continue;
+      }
+      const ready = pending.get(next);
+      if (!ready) break;
+
+      pending.delete(next);
+      this.broadcastToStudents({ type: 'translation', translation: ready }, lang);
+      if (this.professor) send(this.professor, { type: 'translation', translation: ready });
+      next++;
+    }
+    this.nextEmitByLang.set(lang, next);
   }
 
   /* ---------------------------------------------------------------- *
@@ -248,6 +340,59 @@ export class Room {
 
   findVisual(id: string): VizSpec | undefined {
     return this.accumulator.snapshot().visuals.find((v) => v.id === id);
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Term scouting
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Looks for subject vocabulary the glossary is missing.
+   *
+   * Driven from a timer rather than per-utterance, and it declines whenever the
+   * request budget is under pressure, because nothing here is worth a
+   * millisecond of added audio latency.
+   */
+  async scoutForTerms(): Promise<void> {
+    if (this.ended || this.pendingSuggestions.length > 0) return;
+
+    const recent = this.accumulator.recentUtterances(10);
+    const text = recent.map((u) => u.text).join(' ').trim();
+    if (text.length < 160) return;
+
+    const found = await scoutTerms({ text, glossary: this.glossaryTerms });
+
+    // A term the professor has already been shown, and by implication chosen
+    // not to add, must not come back every twenty seconds.
+    const fresh = found.filter((s) => !this.offered.has(s.term.toLowerCase()));
+    if (fresh.length === 0) return;
+
+    for (const s of fresh) this.offered.add(s.term.toLowerCase());
+    this.pendingSuggestions = fresh;
+
+    if (this.professor) {
+      send(this.professor, { type: 'term-suggestions', suggestions: fresh });
+    }
+  }
+
+  /**
+   * Adds accepted suggestions to the live glossary.
+   *
+   * Takes effect on the next utterance, so a term accepted mid-lecture protects
+   * the rest of the lecture.
+   */
+  acceptSuggestions(accepted: TermSuggestion[]): void {
+    this.pendingSuggestions = [];
+    if (accepted.length === 0) return;
+
+    const additions = accepted.map((s, i) => suggestionToTerm(s, this.glossaryTerms.length + i));
+    // Newest first: a term the professor just confirmed they are using outranks
+    // a pack entry they never looked at.
+    this.updateGlossary([...additions, ...this.glossaryTerms]);
+  }
+
+  dismissSuggestions(): void {
+    this.pendingSuggestions = [];
   }
 
   /* ---------------------------------------------------------------- *

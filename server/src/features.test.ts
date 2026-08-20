@@ -11,6 +11,8 @@
 import { buildMatcher, maskTerms } from './pipeline/glossary.js';
 import { renderVisual, requestVisual } from './pipeline/visualize.js';
 import { buildGlossaryFromSource } from './pipeline/auto-glossary.js';
+import { scoutTerms } from './pipeline/term-scout.js';
+import { mergePacks } from './data/glossary-packs.js';
 import { translateUtterance } from './pipeline/translate.js';
 import { isWolframConfigured } from './providers/wolfram.js';
 import { isFirecrawlConfigured } from './providers/firecrawl.js';
@@ -130,9 +132,52 @@ async function testGlossaryImport() {
   console.log(`       hi: ${tr.text}`);
 }
 
+async function testTermScout() {
+  console.log('\nterm scout — catching vocabulary the glossary missed');
+
+  // A linear-algebra glossary, deliberately missing the terms this lecture uses.
+  const glossary = mergePacks(['linear-algebra']);
+
+  const passage = [
+    'Today we are going to look at the Gram-Schmidt process for building an orthonormal basis.',
+    'You start with any set of vectors and you subtract off the projections one at a time.',
+    'What you end up with is a set where every vector is perpendicular to the others.',
+    'This is the same idea behind the QR decomposition, which we will use next week.',
+    'The spring on the door is quite loud today, so speak up if you cannot hear me.',
+  ].join(' ');
+
+  const found = await scoutTerms({ text: passage, glossary });
+  const names = found.map((f) => f.term.toLowerCase());
+  console.log(`       suggested: ${found.map((f) => f.term).join(', ') || '(none)'}`);
+
+  check('found technical vocabulary missing from the glossary', found.length > 0, names);
+  check('caught at least one of Gram-Schmidt / QR decomposition / orthonormal',
+    names.some((n) => /gram|schmidt|qr|orthonormal|projection/.test(n)), names);
+
+  // The asymmetry that matters: a wrongly protected common word is left
+  // untranslated in every sentence it appears in, for the rest of the lecture.
+  check('did NOT protect the ordinary word "spring"', !names.includes('spring'), names);
+  check('did NOT protect ordinary words generally',
+    !names.some((n) => ['door', 'set', 'idea', 'week', 'time', 'system'].includes(n)), names);
+
+  check('suggestions carry the sentence they were heard in',
+    found.every((f) => f.heardIn.length > 0), found.map((f) => f.heardIn));
+  check('suggestions only contain terms actually spoken',
+    found.every((f) => passage.toLowerCase().includes(f.term.toLowerCase())), names);
+
+  // Nothing new to find when the glossary already covers the passage.
+  const covered = await scoutTerms({
+    text: 'The eigenvalue of the matrix tells us how the eigenvector is scaled by the linear transformation. The determinant is zero here.',
+    glossary,
+  });
+  check('stays quiet when the glossary already covers the speech', covered.length === 0,
+    covered.map((c) => c.term));
+}
+
 async function main() {
   await testVisualisation();
   await testGlossaryImport();
+  await testTermScout();
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 }

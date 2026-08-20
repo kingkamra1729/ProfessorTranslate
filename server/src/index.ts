@@ -15,7 +15,9 @@ import { GLOSSARY_PACKS, mergePacks } from './data/glossary-packs.js';
 import { buildGlossaryFromSource } from './pipeline/auto-glossary.js';
 import { proposeVisualFor, renderVisual, requestVisual } from './pipeline/visualize.js';
 import { createRoom, getRoom, listRooms, parseLang, type Listener, type Room } from './rooms.js';
-import { listRecordings, loadRecording } from './store.js';
+import { listRecordings, loadRecording, saveRecording } from './store.js';
+import { buildMatcher } from './pipeline/glossary.js';
+import { translateUtterance } from './pipeline/translate.js';
 import { gateStatus, tryListModels } from './providers/featherless.js';
 
 const app = express();
@@ -127,6 +129,78 @@ app.get('/api/recordings/:id', async (req, res) => {
     return;
   }
   res.json(rec);
+});
+
+/**
+ * Translates an archived lecture into a language it was never rendered in.
+ *
+ * Live translation only runs for languages someone is actually listening to,
+ * because rendering into an empty room costs latency for the students who are
+ * present. The consequence is that a recording is missing every language nobody
+ * chose that day - and the student who most needs the recording is often
+ * exactly the one who was not in the room.
+ *
+ * Because the archive stores text rather than audio, that is fixable after the
+ * fact: the transcript can be rendered into any language on demand, and the
+ * result is written back so the next person to ask gets it instantly.
+ *
+ * Batched, because an hour-long lecture is several hundred utterances and no
+ * single HTTP request should carry that. The client walks through the batches
+ * and shows progress.
+ */
+app.post('/api/recordings/:id/translate', async (req, res) => {
+  const lang = parseLang(req.body?.lang, 'hi');
+  const from = Number.isFinite(Number(req.body?.from)) ? Number(req.body.from) : 0;
+  const count = Math.min(40, Math.max(1, Number(req.body?.count) || 25));
+
+  const rec = await loadRecording(req.params.id);
+  if (!rec) {
+    res.status(404).json({ error: 'Recording not found' });
+    return;
+  }
+
+  if (lang === rec.instructionLang) {
+    res.json({ translated: 0, total: rec.utterances.length, done: true, lang });
+    return;
+  }
+
+  const matcher = buildMatcher(rec.glossary);
+  const slice = rec.utterances.slice(from, from + count);
+
+  const results = await Promise.all(
+    slice.map(async (utterance) => {
+      const existing = rec.translations[utterance.id]?.find((t) => t.lang === lang);
+      if (existing) return existing;
+      return translateUtterance({
+        utteranceId: utterance.id,
+        text: utterance.text,
+        from: rec.instructionLang,
+        to: lang,
+        matcher,
+      });
+    }),
+  );
+
+  for (const tr of results) {
+    const list = rec.translations[tr.utteranceId] ?? [];
+    const at = list.findIndex((t) => t.lang === tr.lang);
+    if (at >= 0) list[at] = tr;
+    else list.push(tr);
+    rec.translations[tr.utteranceId] = list;
+  }
+
+  await saveRecording(rec);
+
+  const next = from + slice.length;
+  res.json({
+    translated: next,
+    total: rec.utterances.length,
+    done: next >= rec.utterances.length,
+    lang,
+    // Returned so the client can render this batch immediately rather than
+    // waiting for the whole lecture to finish.
+    batch: results,
+  });
 });
 
 /** Builds a glossary from a syllabus URL or pasted course text. */
@@ -296,6 +370,18 @@ wss.on('connection', (socket) => {
           break;
         }
 
+        case 'prof:accept-terms': {
+          if (session.role !== 'professor' || !session.room) return;
+          session.room.acceptSuggestions(msg.terms);
+          break;
+        }
+
+        case 'prof:dismiss-terms': {
+          if (session.role !== 'professor' || !session.room) return;
+          session.room.dismissSuggestions();
+          break;
+        }
+
         case 'prof:end': {
           if (session.role !== 'professor' || !session.room) return;
           await session.room.end();
@@ -333,11 +419,25 @@ server.listen(config.port, () => {
   console.log('');
 });
 
-// Suggest a visual when the professor's recent speech looks plottable. Runs on
-// a timer rather than per-utterance so it never sits in the translation path.
+// Background passes over live rooms. Both run on timers rather than
+// per-utterance, and both stand down when the request budget is under
+// pressure, so neither can ever sit in front of a translation a student is
+// waiting to hear.
+
+// Suggest a visual when recent speech looks plottable.
 setInterval(() => {
   for (const meta of listRooms()) {
     const room = getRoom(meta.id);
     if (room) void proposeVisualFor(room);
   }
 }, 20_000);
+
+// Catch subject vocabulary the glossary is missing. Runs more often than the
+// visual pass: an unprotected term is mistranslated in every sentence it
+// appears in until it is added, so minutes matter.
+setInterval(() => {
+  for (const meta of listRooms()) {
+    const room = getRoom(meta.id);
+    if (room) void room.scoutForTerms();
+  }
+}, 12_000);

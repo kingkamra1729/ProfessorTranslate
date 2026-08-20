@@ -102,7 +102,16 @@ console.log('\ndegraded model output');
 
   const repaired = appendDroppedTerms(result, hits, 'en');
   check('repair appends the lost term rather than losing it', repaired.text.includes('determinant'), repaired.text);
-  check('repaired run is spoken in the instruction language', repaired.runs[repaired.runs.length - 1].lang === 'en', repaired.runs);
+
+  const repairedTermRuns = repaired.runs.filter((r) => r.isTerm);
+  check('recovered term is its own run, spoken in the instruction language',
+    repairedTermRuns.some((r) => r.text === 'determinant' && r.lang === 'en'),
+    repaired.runs.map(r => `${r.lang}:${r.isTerm}:${r.text}`));
+  check('brackets are explanation, not part of the term run',
+    repairedTermRuns.every((r) => !/[()]/.test(r.text)), repairedTermRuns);
+  check('repaired runs still reconstruct the text exactly',
+    repaired.runs.map((r) => r.text).join('') === repaired.text,
+    { joined: repaired.runs.map(r => r.text).join(''), text: repaired.text });
 }
 
 {
@@ -128,6 +137,20 @@ console.log('\nrun merging');
   const result = unmaskTerms(`एक ${sentinel(0)} एक जाल है और यह उपयोगी है।`, hits, 'hi', 'en');
   const hiRuns = result.runs.filter((r) => r.lang === 'hi');
   check('adjacent same-language runs are merged', hiRuns.length === 2, result.runs.map(r => `${r.lang}:${r.text}`));
+}
+
+{
+  // Models sometimes emit two sentinels with nothing between them. The empty
+  // gap must not cause the two terms to be fused into one run.
+  const src = 'The eigenvalue and matrix are related.';
+  const { hits } = maskTerms(src, matcher);
+  const result = unmaskTerms(`${sentinel(0)}${sentinel(1)} संबंधित हैं।`, hits, 'hi', 'en');
+  const termRuns = result.runs.filter((r) => r.isTerm);
+  check('adjacent sentinels stay separate runs', termRuns.length === 2, result.runs.map(r => `${r.lang}:${r.isTerm}:${r.text}`));
+  check('adjacent terms are not fused into one word',
+    termRuns.map((r) => r.text).join('|') === 'eigenvalue|matrix', termRuns.map(r => r.text));
+  check('no run reads as a fused non-word',
+    !result.runs.some((r) => r.text.includes('eigenvaluematrix')), result.text);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

@@ -6,6 +6,7 @@ import {
   type LangCode,
   type LectureMeta,
   type ServerMessage,
+  type TermSuggestion,
   type Translation,
   type Utterance,
   type VizSpec,
@@ -333,6 +334,8 @@ function Live({
   const [micDetail, setMicDetail] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposals, setProposals] = useState<VizSpec[]>([]);
+  const [suggestions, setSuggestions] = useState<TermSuggestion[]>([]);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [vizPrompt, setVizPrompt] = useState('');
   const [ended, setEnded] = useState(false);
 
@@ -381,6 +384,13 @@ function Live({
               : l,
           ),
         );
+        break;
+      case 'term-suggestions':
+        setSuggestions(msg.suggestions);
+        // Pre-selected: the system only proposes what it is fairly confident
+        // about, so the common action is "yes, all of them". The professor is
+        // mid-sentence and unchecking one is cheaper than checking four.
+        setChosen(new Set(msg.suggestions.map((s) => s.term)));
         break;
       case 'viz':
         setProposals((prev) => {
@@ -463,6 +473,27 @@ function Live({
   /* ---------------------------------------------------------------- *
    * Visuals
    * ---------------------------------------------------------------- */
+
+  const toggleTerm = (term: string) =>
+    setChosen((prev) => {
+      const next = new Set(prev);
+      if (next.has(term)) next.delete(term);
+      else next.add(term);
+      return next;
+    });
+
+  const acceptTerms = () => {
+    const accepted = suggestions.filter((s) => chosen.has(s.term));
+    socketRef.current?.send({ type: 'prof:accept-terms', terms: accepted });
+    setSuggestions([]);
+    setChosen(new Set());
+  };
+
+  const dismissTerms = () => {
+    socketRef.current?.send({ type: 'prof:dismiss-terms' });
+    setSuggestions([]);
+    setChosen(new Set());
+  };
 
   const decide = (viz: VizSpec, approve: boolean) => {
     socketRef.current?.send({ type: 'prof:viz-decision', vizId: viz.id, approve });
@@ -548,6 +579,58 @@ function Live({
           {micState === 'error' && micDetail && (
             <Card className="mb-4 border-live-500/40 bg-live-500/5 p-3">
               <p className="text-sm text-live-500">{micDetail}</p>
+            </Card>
+          )}
+
+          {/* Missing vocabulary caught mid-lecture. */}
+          {suggestions.length > 0 && (
+            <Card className="mb-4 border-term-500/50 p-4">
+              <h2 className="mb-1 text-sm font-semibold text-term-400">
+                Heard {suggestions.length === 1 ? 'a term' : 'terms'} not in your glossary
+              </h2>
+              <p className="mb-3 text-xs text-ink-400">
+                Until added, these are translated like ordinary words. Adding one protects it
+                for the rest of the lecture.
+              </p>
+
+              <div className="space-y-2">
+                {suggestions.map((s) => {
+                  const on = chosen.has(s.term);
+                  return (
+                    <label
+                      key={s.term}
+                      className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+                        on ? 'border-term-500 bg-term-900/30' : 'border-ink-700 bg-ink-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggleTerm(s.term)}
+                        className="mt-1 accent-term-500"
+                      />
+                      <span className="min-w-0">
+                        <span className="term">{s.term}</span>
+                        {s.reason && (
+                          <span className="ml-2 text-xs text-ink-400">{s.reason}</span>
+                        )}
+                        <span className="mt-1 block truncate text-xs text-ink-500 italic">
+                          &ldquo;{s.heardIn}&rdquo;
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" variant="primary" onClick={acceptTerms} disabled={chosen.size === 0}>
+                  Protect {chosen.size} {chosen.size === 1 ? 'term' : 'terms'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={dismissTerms}>
+                  Not now
+                </Button>
+              </div>
             </Card>
           )}
 

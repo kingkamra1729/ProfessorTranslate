@@ -1,12 +1,19 @@
-import type { GlossaryTerm, LangCode, LectureMeta, LectureRecording, VizSpec } from '@suvidha/shared';
+import type {
+  GlossaryTerm,
+  LangCode,
+  LectureMeta,
+  LectureRecording,
+  Translation,
+  VizSpec,
+} from '@suvidha/shared';
 import { apiUrl } from './config';
 
 /**
  * Thin REST client.
  *
- * Paths are relative in local development and in a single-host deployment, and
- * absolute against VITE_SERVER_URL when the frontend and server are on separate
- * hosts - which is what deploying the frontend to Vercel requires.
+ * Paths are relative in local development and in the normal single-host
+ * deployment, and absolute against VITE_SERVER_URL only when the frontend and
+ * server are hosted separately.
  */
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -62,6 +69,18 @@ export const api = {
   recordings: () => req<LectureMeta[]>('/api/recordings'),
 
   recording: (id: string) => req<LectureRecording>(`/api/recordings/${encodeURIComponent(id)}`),
+
+  translateRecording: (id: string, lang: LangCode, from: number, count = 25) =>
+    req<{
+      translated: number;
+      total: number;
+      done: boolean;
+      lang: LangCode;
+      batch: Translation[];
+    }>(`/api/recordings/${encodeURIComponent(id)}/translate`, {
+      method: 'POST',
+      body: JSON.stringify({ lang, from, count }),
+    }),
 
   buildGlossary: (body: { url?: string; text?: string; subject?: string }) =>
     req<{ terms: GlossaryTerm[] }>('/api/glossary/build', {

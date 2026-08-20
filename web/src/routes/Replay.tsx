@@ -98,6 +98,8 @@ function One({ id }: { id: string }) {
   const [playing, setPlaying] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [rate, setRate] = useState(1.05);
+  const [translating, setTranslating] = useState<{ done: number; total: number } | null>(null);
+  const [translateError, setTranslateError] = useState<string | null>(null);
 
   const queueRef = useRef<SpeechQueue | null>(null);
   const playingRef = useRef(false);
@@ -165,6 +167,49 @@ function One({ id }: { id: string }) {
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [cursor]);
+
+  /**
+   * Renders the whole archived lecture into the selected language.
+   *
+   * Walks the batches the server exposes rather than asking for everything at
+   * once: an hour-long lecture is several hundred utterances, and a single
+   * request for all of them would sit past any sensible timeout with nothing to
+   * show. Each batch is merged as it lands, so the transcript fills in visibly
+   * from the top while the rest is still running.
+   */
+  const translateAll = async () => {
+    if (!rec) return;
+    setTranslateError(null);
+    setTranslating({ done: 0, total: rec.utterances.length });
+
+    try {
+      let from = 0;
+      for (;;) {
+        const res = await api.translateRecording(rec.id, lang, from);
+
+        setRec((prev) => {
+          if (!prev) return prev;
+          const merged = { ...prev.translations };
+          for (const tr of res.batch ?? []) {
+            const list = [...(merged[tr.utteranceId] ?? [])];
+            const at = list.findIndex((t) => t.lang === tr.lang);
+            if (at >= 0) list[at] = tr;
+            else list.push(tr);
+            merged[tr.utteranceId] = list;
+          }
+          return { ...prev, translations: merged };
+        });
+
+        setTranslating({ done: res.translated, total: res.total });
+        if (res.done) break;
+        from = res.translated;
+      }
+    } catch (err) {
+      setTranslateError(err instanceof Error ? err.message : 'Translation failed');
+    } finally {
+      setTranslating(null);
+    }
+  };
 
   const play = () => {
     unlockAudio();
@@ -240,11 +285,37 @@ function One({ id }: { id: string }) {
         <LangPicker value={lang} onChange={setLang} label="Replay in" size="sm" />
 
         {langMissing && (
-          <p className="mt-3 rounded-lg border border-brand-500/40 bg-brand-500/5 px-3 py-2 text-sm text-brand-400">
-            Nobody listened in {LANGUAGES[lang].name} during this lecture, so it was never
-            rendered. Lines below are shown in{' '}
-            {LANGUAGES[rec.instructionLang].name} instead.
-          </p>
+          <div className="mt-3 rounded-lg border border-brand-500/40 bg-brand-500/5 px-3 py-2.5">
+            <p className="text-sm text-brand-400">
+              Nobody listened in {LANGUAGES[lang].name} during this lecture, so it was never
+              rendered — the archive stores the transcript, not audio, so it can be rendered
+              now.
+            </p>
+
+            {translating ? (
+              <div className="mt-2.5">
+                <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
+                  <div
+                    className="h-full bg-brand-500 transition-all"
+                    style={{
+                      width: `${Math.round((translating.done / Math.max(1, translating.total)) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-ink-400">
+                  Translating {translating.done} of {translating.total} lines…
+                </p>
+              </div>
+            ) : (
+              <Button size="sm" variant="primary" className="mt-2.5" onClick={translateAll}>
+                Translate into {LANGUAGES[lang].nativeName}
+              </Button>
+            )}
+
+            {translateError && (
+              <p className="mt-2 text-xs text-live-500">{translateError}</p>
+            )}
+          </div>
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-ink-800 pt-4">

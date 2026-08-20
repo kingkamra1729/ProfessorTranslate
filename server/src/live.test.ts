@@ -163,7 +163,17 @@ async function main() {
   check('French student received only French',
     frenchTranslations.every((m) => m.type === 'translation' && m.translation.lang === 'fr'));
 
-  const first = hindiTranslations[0];
+  // Order of *arrival* is asserted separately below. This block is about the
+  // content of a specific sentence, so it is located by utterance id rather
+  // than by position - indexing into the arrival order was the original bug in
+  // this test, and it only showed up when the shorter second sentence happened
+  // to finish translating first.
+  const firstUtteranceId =
+    hindiUtterances[0]?.type === 'utterance' ? hindiUtterances[0].utterance.id : '';
+  const first = hindiTranslations.find(
+    (m) => m.type === 'translation' && m.translation.utteranceId === firstUtteranceId,
+  );
+
   if (first?.type === 'translation') {
     const tr = first.translation;
     const termRuns = tr.runs.filter((r) => r.isTerm);
@@ -191,6 +201,24 @@ async function main() {
   } else {
     check('a Hindi translation arrived', false, hindiSeen);
   }
+
+  // Sentences within one language must reach the student in the order they were
+  // spoken. They are translated concurrently and the shorter one finishes
+  // first, so without explicit ordering the audio plays the second sentence of
+  // a thought before the first - and nothing on screen would show it happened.
+  const spokenOrder = hindiUtterances
+    .map((m) => (m.type === 'utterance' ? m.utterance.id : ''))
+    .filter(Boolean);
+  const arrivalOrder = hindiTranslations
+    .map((m) => (m.type === 'translation' ? m.translation.utteranceId : ''))
+    .filter(Boolean);
+
+  check(
+    'translations arrive in the order the sentences were spoken',
+    arrivalOrder.length === spokenOrder.length &&
+      arrivalOrder.every((id, i) => id === spokenOrder[i]),
+    { spoken: spokenOrder, arrived: arrivalOrder },
+  );
 
   console.log('\nswitching language mid-lecture');
   send(french, { type: 'student:set-lang', lang: 'bn' });
