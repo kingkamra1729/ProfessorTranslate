@@ -25,7 +25,8 @@
     "test:scout": "npm run test:scout --workspace server",
     "check:deploy": "node scripts/check-case.mjs",
     "test:extract": "npm run test:extract --workspace server",
-    "test:asr": "tsx web/src/lib/asr.test.ts"
+    "test:asr": "tsx web/src/lib/asr.test.ts",
+    "test:deployed": "npm run test:deployed --workspace server --"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
