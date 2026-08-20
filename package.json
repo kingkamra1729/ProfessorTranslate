@@ -18,7 +18,9 @@
     "test": "npm run test --workspace server",
     "test:live": "npm run test:live --workspace server",
     "simulate": "npm run simulate --workspace server --",
-    "doctor": "npm run doctor --workspace server"
+    "doctor": "npm run doctor --workspace server",
+    "test:features": "npm run test:features --workspace server",
+    "bench": "npm run bench --workspace server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

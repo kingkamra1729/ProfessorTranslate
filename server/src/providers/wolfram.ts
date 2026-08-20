@@ -122,7 +122,19 @@ export async function alphaShortAnswer(query: string): Promise<string | null> {
   }
 }
 
-/** Tries the cloud route, then Alpha, and reports which one produced the image. */
+/**
+ * Renders by whichever route is available, most precise first.
+ *
+ *   1. Wolfram Cloud with the expression - exact, if an endpoint is deployed.
+ *   2. Alpha with the expression - Alpha parses Wolfram Language, so
+ *      `Plot[Exp[-x/4] Sin[3x], {x, 0, 20}]` gives exactly the requested curve.
+ *   3. Alpha with the natural-language query - the loosest route, and the one
+ *      most likely to come back 501 "did not understand your input".
+ *
+ * Step 2 is the one worth calling out. It was missing originally, so a spec
+ * carrying a perfectly good Wolfram expression still fell through to prose,
+ * and Alpha rejected it. An exact expression should never lose to a paraphrase.
+ */
 export async function render(
   expression: string | undefined,
   query: string,
@@ -138,14 +150,18 @@ export async function render(
   }
 
   if (config.wolfram.appId) {
-    try {
-      return await renderAlphaQuery(query);
-    } catch (err) {
-      errors.push(`alpha: ${err instanceof Error ? err.message : String(err)}`);
+    for (const [label, input] of [
+      ['alpha-expression', expression],
+      ['alpha-query', query],
+    ] as const) {
+      if (!input?.trim()) continue;
+      try {
+        return await renderAlphaQuery(input);
+      } catch (err) {
+        errors.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
-  throw new Error(
-    errors.length > 0 ? errors.join('; ') : 'No Wolfram credentials configured',
-  );
+  throw new Error(errors.length > 0 ? errors.join('; ') : 'No Wolfram credentials configured');
 }

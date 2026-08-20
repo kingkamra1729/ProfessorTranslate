@@ -10,7 +10,9 @@
     "test": "tsx src/pipeline/glossary.test.ts",
     "test:live": "tsx src/live.test.ts",
     "simulate": "tsx src/simulate.ts",
-    "doctor": "tsx src/doctor.ts"
+    "doctor": "tsx src/doctor.ts",
+    "test:features": "tsx src/features.test.ts",
+    "bench": "tsx src/bench.ts"
   },
   "dependencies": {
     "@suvidha/shared": "*",

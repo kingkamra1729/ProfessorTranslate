@@ -54,6 +54,29 @@ function collect(ws: WebSocket): ServerMessage[] {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Waits until a condition holds, or gives up.
+ *
+ * Fixed sleeps were fine when translation was a no-op, but a real model call
+ * takes one to three seconds and two languages are dispatched concurrently, so
+ * a hardcoded 2500ms turns this suite into a coin flip that fails on a slow
+ * network and passes on a fast one. Polling makes the test wait exactly as long
+ * as it needs to and no longer.
+ */
+async function waitFor(
+  label: string,
+  predicate: () => boolean,
+  timeoutMs = 30_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await wait(120);
+  }
+  console.log(`       (timed out after ${timeoutMs}ms waiting for: ${label})`);
+  return false;
+}
+
 async function main() {
   console.log('\ncreating lecture');
   const createRes = await fetch(`${BASE}/api/lectures`, {
@@ -118,7 +141,12 @@ async function main() {
       'Now let us look at what happens when the determinant is zero.',
   });
 
-  await wait(2500);
+  await waitFor(
+    'both students to receive 2 translations each',
+    () =>
+      hindiSeen.filter((m) => m.type === 'translation').length >= 2 &&
+      frenchSeen.filter((m) => m.type === 'translation').length >= 2,
+  );
 
   const hindiUtterances = hindiSeen.filter((m) => m.type === 'utterance' && m.utterance.final);
   check('one recognition result became two utterances', hindiUtterances.length === 2,
@@ -142,9 +170,19 @@ async function main() {
     check('protected terms survive as runs', termRuns.length === 3, tr.runs);
     check('term runs are tagged for an English voice',
       termRuns.every((r) => r.lang === 'en'), termRuns);
-    check('term runs carry the exact spoken surface forms',
-      termRuns.map((r) => r.text.trim()).join('|') === 'eigenvalue|matrix|eigenvector',
-      termRuns.map((r) => r.text));
+    // Compared as a set, deliberately.
+    //
+    // The source order is eigenvalue, matrix, eigenvector - but Hindi puts the
+    // possessor first, so a correct translation says "इस matrix का eigenvalue"
+    // and the runs come back reordered. Runs follow the *translation's* word
+    // order, which is the whole point: they drive which voice speaks which
+    // span, and that has to match the sentence the student actually hears.
+    // Asserting source order here would be asserting a bug.
+    const expected = ['eigenvalue', 'matrix', 'eigenvector'];
+    const got = termRuns.map((r) => r.text.trim());
+    check('term runs carry the exact spoken surface forms, in translated order',
+      got.length === expected.length && expected.every((t) => got.includes(t)),
+      got);
     check('runs reconstruct the subtitle text exactly',
       tr.runs.map((r) => r.text).join('') === tr.text, { runs: tr.runs, text: tr.text });
     check('latency is reported', typeof tr.latencyMs === 'number', tr.latencyMs);
@@ -160,7 +198,10 @@ async function main() {
   frenchSeen.length = 0;
 
   send(prof, { type: 'prof:utterance', final: true, t: 5000, text: 'The rank of the matrix is two.' });
-  await wait(2000);
+  await waitFor(
+    'the switched student to receive a translation',
+    () => frenchSeen.filter((m) => m.type === 'translation').length > 0,
+  );
 
   const afterSwitch = frenchSeen.filter((m) => m.type === 'translation');
   check('student now receives the newly chosen language',
@@ -169,7 +210,13 @@ async function main() {
 
   console.log('\nending lecture');
   send(prof, { type: 'prof:end' });
-  await wait(1200);
+  await waitFor(
+    'the lecture-ended broadcast',
+    () => hindiSeen.some((m) => m.type === 'lecture-ended'),
+    15_000,
+  );
+  // The archive is written after in-flight translations settle.
+  await wait(600);
 
   check('students were told the lecture ended', hindiSeen.some((m) => m.type === 'lecture-ended'));
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { LANGUAGES, type LangCode, type VizKind, type VizSpec } from '@suvidha/shared';
-import { chatWithRetry, isConfigured } from '../providers/featherless.js';
+import { chatWithRetry, gateStatus, isConfigured } from '../providers/featherless.js';
 import { alphaShortAnswer, isWolframConfigured, render } from '../providers/wolfram.js';
 import { config } from '../config.js';
 import type { Room } from '../rooms.js';
@@ -72,6 +72,15 @@ const DRAFT_SYSTEM = [
   '- Keep technical terms in English inside "title" and "altText".',
 ].join('\n');
 
+/** Truncates on a word boundary, so a fragment is never sent to Wolfram. */
+function truncateWords(text: string, max: number): string {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > max * 0.5 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
 function parseJsonObject(raw: string): VizDraft | null {
   let text = raw.trim();
   // Models wrap JSON in fences and prose no matter how firmly they are asked not to.
@@ -98,8 +107,8 @@ async function draftSpec(sourceText: string): Promise<VizDraft | null> {
       {
         model: config.featherless.reasoningModel,
         temperature: 0.1,
-        maxTokens: 500,
-        timeoutMs: 20_000,
+        maxTokens: 700,
+        timeoutMs: config.featherless.slowTimeoutMs,
       },
     );
     const draft = parseJsonObject(raw);
@@ -165,7 +174,10 @@ export async function requestVisual(prompt: string, lectureId: string): Promise<
       id: randomUUID(),
       lectureId,
       kind: 'wolfram',
-      title: prompt.slice(0, 60),
+      title: truncateWords(prompt, 60),
+      // The full prompt, not the truncated title. Alpha was previously handed
+      // a title cut mid-word and answered 501 "did not understand your input".
+      query: prompt,
       altText: { en: prompt },
       status: 'proposed',
     };
@@ -175,8 +187,9 @@ export async function requestVisual(prompt: string, lectureId: string): Promise<
     id: randomUUID(),
     lectureId,
     kind: draft.kind ?? 'wolfram',
-    title: draft.title ?? prompt.slice(0, 60),
+    title: draft.title ?? truncateWords(prompt, 60),
     expression: draft.expression,
+    query: draft.query ?? prompt,
     domain: draft.domain,
     altText: { en: draft.altText ?? draft.title ?? prompt },
     status: 'proposed',
@@ -196,7 +209,9 @@ export async function renderVisual(
 ): Promise<VizSpec> {
   const out: VizSpec = { ...viz, status: 'approved' };
 
-  const query = viz.title || viz.altText.en || '';
+  // Order matters: the drafter's query, then the original description, and the
+  // title only as a last resort - it is a display label, not a question.
+  const query = viz.query || viz.altText.en || viz.title || '';
 
   if (isWolframConfigured()) {
     try {
@@ -257,6 +272,18 @@ export async function proposeVisualFor(room: Room): Promise<void> {
   const state = proposalState.get(room.meta.id) ?? { lastIndex: 0, lastAt: 0 };
   if (Date.now() - state.lastAt < PROPOSAL_COOLDOWN_MS) return;
 
+  // Yield to live translation.
+  //
+  // The plan allows four concurrent requests and one utterance fans out to
+  // every language in the room, so a speculative 700-token diagram spec can sit
+  // in front of the sentence a student is waiting to hear. Audio latency is the
+  // one number this product cannot afford to regress; a diagram suggestion can
+  // always wait for the next cooldown.
+  const gate = gateStatus();
+  if (gate.waiting > 0 || gate.inFlight >= gate.limit - 1) {
+    return;
+  }
+
   const recent = room.accumulator.recentUtterances(12);
   if (recent.length <= state.lastIndex) return;
 
@@ -277,6 +304,7 @@ export async function proposeVisualFor(room: Room): Promise<void> {
     kind: draft.kind ?? 'wolfram',
     title: draft.title ?? 'Suggested diagram',
     expression: draft.expression,
+    query: draft.query,
     domain: draft.domain,
     altText: { [LANGUAGES[room.meta.instructionLang].code]: draft.altText ?? draft.title ?? '' },
     sourceUtteranceId: fresh[fresh.length - 1]?.id,

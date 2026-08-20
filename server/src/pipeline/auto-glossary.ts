@@ -33,7 +33,8 @@ const EXTRACT_SYSTEM = [
   '- Exclude ordinary academic words: introduction, chapter, example, problem, lecture, syllabus, assignment, definition, theorem, exercise.',
   '- Include multi-word terms as single entries: "partial differential equation", not "partial" and "equation".',
   '- In "aliases", think about what automatic speech recognition does to the term when spoken aloud. "pseudocode" is heard as "sudo code"; "eigenvalue" as "eigen value" and "igen value"; "SVD" as "S V D". These aliases are the difference between a protected term and a mistranslated one.',
-  '- At most 80 entries. Prefer the terms a lecturer would actually say out loud.',
+  '- At most 40 entries. Prefer the terms a lecturer would actually say out loud.',
+  '- Keep each "gloss" under 15 words. A long gloss costs entries: the reply is cut off at a token limit, and a verbose thirtieth entry means there is no fortieth.',
 ].join('\n');
 
 interface ExtractedTerm {
@@ -42,19 +43,54 @@ interface ExtractedTerm {
   gloss?: string;
 }
 
+/**
+ * Parses the model's JSON array, tolerating a truncated response.
+ *
+ * Generation stops at the token limit regardless of where the JSON is, so a
+ * long list arrives cut off mid-object and `JSON.parse` rejects the whole
+ * thing. Returning nothing in that case throws away thirty perfectly good terms
+ * because the thirty-first was incomplete - which is what this used to do, and
+ * it failed silently, reporting an empty glossary rather than an error.
+ *
+ * So on a parse failure we retreat to the last complete object and close the
+ * array there.
+ */
 function parseJsonArray(raw: string): ExtractedTerm[] {
   let text = raw.trim();
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
   text = text.replace(/^<think>[\s\S]*?<\/think>\s*/i, '');
+
   const start = text.indexOf('[');
+  if (start < 0) return [];
+
   const end = text.lastIndexOf(']');
-  if (start < 0 || end <= start) return [];
-  try {
-    const parsed = JSON.parse(text.slice(start, end + 1));
-    return Array.isArray(parsed) ? (parsed as ExtractedTerm[]) : [];
-  } catch {
-    return [];
+  if (end > start) {
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1));
+      if (Array.isArray(parsed)) return parsed as ExtractedTerm[];
+    } catch {
+      /* Fall through to truncation recovery. */
+    }
   }
+
+  // Recovery: keep everything up to the last `}` that closes a complete entry.
+  const body = text.slice(start);
+  const lastComplete = body.lastIndexOf('}');
+  if (lastComplete < 0) return [];
+
+  try {
+    const repaired = `${body.slice(0, lastComplete + 1)}]`;
+    const parsed = JSON.parse(repaired);
+    if (Array.isArray(parsed)) {
+      console.warn(
+        `[glossary] model output was truncated; recovered ${parsed.length} complete entries`,
+      );
+      return parsed as ExtractedTerm[];
+    }
+  } catch {
+    /* Genuinely unparseable. */
+  }
+  return [];
 }
 
 /**
@@ -123,8 +159,11 @@ export async function buildGlossaryFromSource(src: GlossarySource): Promise<Glos
     {
       model: config.featherless.reasoningModel,
       temperature: 0.1,
-      maxTokens: 3000,
-      timeoutMs: 60_000,
+      maxTokens: 4000,
+      // Three thousand tokens at roughly 45 tokens/second is over a minute of
+      // generation, so this gets a much longer leash than anything on the
+      // audio path. It runs once, before the lecture starts.
+      timeoutMs: config.featherless.slowTimeoutMs * 2,
     },
   );
 

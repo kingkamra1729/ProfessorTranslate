@@ -76,9 +76,27 @@ export const config = {
      * model sees the text.
      */
     model: str('FEATHERLESS_MODEL', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
-    /** A slower, stronger model for glossary building and visualisation specs. */
-    reasoningModel: str('FEATHERLESS_REASONING_MODEL', 'Qwen/Qwen3-235B-A22B'),
+    /**
+     * Model for glossary building and visualisation specs.
+     *
+     * Defaults to the same model as live translation, which is deliberate and
+     * was measured rather than assumed. On a ~400-token structured generation:
+     * this model returns clean JSON in ~9s, while Qwen3-235B-A22B and
+     * Qwen3.5-27B both spent their whole token budget on internal reasoning and
+     * returned an empty string. Bigger was not better; it was empty.
+     *
+     * Using one model everywhere also avoids the provider's model-switching
+     * throttle, which returns 429 when a key hops between deployments.
+     */
+    reasoningModel: str('FEATHERLESS_REASONING_MODEL', 'Qwen/Qwen3-30B-A3B-Instruct-2507'),
     timeoutMs: num('FEATHERLESS_TIMEOUT_MS', 12_000),
+    /**
+     * Maximum simultaneous requests. Featherless reports this per plan via
+     * /v1/plan - 4 on Feather Chat - and returns 429 above it.
+     */
+    concurrency: num('FEATHERLESS_CONCURRENCY', 4),
+    /** Off-the-audio-path work: drafting diagrams, extracting a glossary. */
+    slowTimeoutMs: num('FEATHERLESS_SLOW_TIMEOUT_MS', 90_000),
   },
 
   wolfram: {

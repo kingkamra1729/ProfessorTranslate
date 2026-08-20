@@ -106,6 +106,15 @@ export interface VizSpec {
   title: string;
   /** Wolfram Language expression, evaluated server side for image kinds. */
   expression?: string;
+  /**
+   * The same request phrased as a Wolfram|Alpha natural-language query.
+   *
+   * Kept alongside `expression` because the two rendering routes want different
+   * input: a deployed Wolfram Cloud endpoint evaluates the expression, while
+   * Alpha parses either but does better with a query it was designed for. The
+   * title is not a substitute - it is a human label and Alpha rejects it.
+   */
+  query?: string;
   /** Plot domain, for the plotting kinds. */
   domain?: { xMin: number; xMax: number; yMin?: number; yMax?: number };
   /** Rendered result: a data URI (image) or LaTeX (formula). */

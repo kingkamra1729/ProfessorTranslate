@@ -124,8 +124,10 @@ but rejected looks identical to a working one from the outside and degrades sile
 passthrough, which is not something to discover during a demo.
 
 ```bash
-npm test          # term-protection engine, 21 assertions
-npm run test:live # full WebSocket pipeline against a running server, 23 assertions
+npm test           # term-protection engine, 21 assertions, no network
+npm run test:live  # full WebSocket pipeline against a running server, 23 assertions
+npm run test:features  # Wolfram render + Firecrawl import, 12 assertions (spends credits)
+npm run bench      # times candidate models on a realistic generation
 ```
 
 ---
@@ -246,6 +248,28 @@ a second; translating a sentence that is about to change wastes the call and mak
 stutter.
 
 ---
+
+## What the provider actually does
+
+Three things were measured rather than assumed, and each changed a default.
+
+**Bigger models were worse here.** On a ~400-token structured generation,
+`Qwen3-30B-A3B-Instruct-2507` returns clean JSON in ~9s. `Qwen3-235B-A22B` and
+`Qwen3.5-27B` both spent their entire token budget on internal reasoning and returned an
+**empty string**. So one model does every job. That also sidesteps the provider's
+model-switching throttle, which 429s when a key hops between deployments. Re-measure on
+your own plan with `npm run bench`.
+
+**The plan caps concurrency at 4.** `/v1/plan` reports it. One utterance fans out to every
+language in the room simultaneously, so a lecture with four languages is at the ceiling
+before anything else asks. Requests go through a gate that queues rather than 429s, and the
+automatic diagram proposer stands down whenever the gate is busy — a speculative diagram
+must never sit in front of the sentence a student is waiting to hear. `/api/health` reports
+gate pressure, so "the demo felt slow" is diagnosable.
+
+**Don't validate a key by listing models.** `/v1/models` is a 7.7 MB response covering
+40,000+ models and takes several seconds. Using it as a health check makes a perfectly good
+key look broken. `npm run doctor` authenticates with a two-token completion instead.
 
 ## Speech, and the gap in the sponsor credits
 

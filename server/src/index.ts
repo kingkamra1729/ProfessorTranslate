@@ -16,7 +16,7 @@ import { buildGlossaryFromSource } from './pipeline/auto-glossary.js';
 import { proposeVisualFor, renderVisual, requestVisual } from './pipeline/visualize.js';
 import { createRoom, getRoom, listRooms, parseLang, type Listener, type Room } from './rooms.js';
 import { listRecordings, loadRecording } from './store.js';
-import { listModels } from './providers/featherless.js';
+import { gateStatus, tryListModels } from './providers/featherless.js';
 
 const app = express();
 
@@ -44,12 +44,14 @@ app.use(express.json({ limit: '2mb' }));
  * ------------------------------------------------------------------ */
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, services: describeConfig() });
+  // `gate` is included because "the demo felt slow" is otherwise unfalsifiable:
+  // it distinguishes a saturated request budget from a slow network.
+  res.json({ ok: true, services: describeConfig(), gate: gateStatus() });
 });
 
 /** Confirms the Featherless key works, for the setup screen. */
 app.get('/api/models', async (_req, res) => {
-  const models = await listModels();
+  const models = await tryListModels();
   res.json({ count: models.length, sample: models.slice(0, 40) });
 });
 

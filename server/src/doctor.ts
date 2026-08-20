@@ -12,7 +12,7 @@
  * Never prints key values.
  */
 import { config, describeConfig } from './config.js';
-import { chat, isConfigured, listModels } from './providers/featherless.js';
+import { chat, checkAuth, isConfigured } from './providers/featherless.js';
 import { isWolframConfigured, render } from './providers/wolfram.js';
 import { isFirecrawlConfigured } from './providers/firecrawl.js';
 import { buildMatcher } from './pipeline/glossary.js';
@@ -56,48 +56,42 @@ async function checkFeatherless() {
 
   ok(`Key loaded: ${mask(config.featherless.apiKey)}`);
 
-  // 1. Does the key authenticate at all?
-  const models = await listModels();
-  if (models.length === 0) {
+  // 1. Authenticate with the cheapest call that proves the key works, and that
+  //    the configured model can actually be served. A real completion answers
+  //    both questions at once; listing the catalogue answers neither quickly.
+  const auth = await checkAuth();
+  if (!auth.ok) {
+    bad('Key rejected, or the model could not be served', auth.detail);
     bad(
-      'Could not list models',
-      'The key may be invalid, out of credit, or the network is blocked.',
+      'Cannot continue',
+      'Check the key at https://featherless.ai/account, and confirm\n      ' +
+        `FEATHERLESS_MODEL="${config.featherless.model}" is on your plan.`,
     );
     return;
   }
-  ok(`Key authenticates — ${models.length} models visible`);
+  ok(
+    `Key authenticates and ${config.featherless.model} responds`,
+    `model replied: ${JSON.stringify(auth.detail)}`,
+  );
 
-  // 2. Does the configured model actually exist on this account?
-  for (const [label, model] of [
-    ['live model', config.featherless.model],
-    ['reasoning model', config.featherless.reasoningModel],
-  ] as const) {
-    if (models.includes(model)) {
-      ok(`${label} available: ${model}`);
-    } else {
-      const near = models.filter((m) => m.split('/')[0] === model.split('/')[0]).slice(0, 3);
-      bad(
-        `${label} NOT on this account: ${model}`,
-        near.length > 0
-          ? `Try one of: ${near.join(', ')}`
-          : 'Pick a model id from https://featherless.ai/models',
-      );
-    }
-  }
-
-  // 3. Does a plain completion round-trip?
+  // 2. The reasoning model is a separate deployment and may not be on the same
+  //    plan, so it gets its own round-trip rather than being assumed.
   try {
-    const reply = await chat(
+    await chat(
       [
         { role: 'system', content: 'Reply with exactly one word: OK' },
         { role: 'user', content: 'ping' },
       ],
-      { maxTokens: 16, timeoutMs: 30_000 },
+      { model: config.featherless.reasoningModel, maxTokens: 16, timeoutMs: 60_000 },
     );
-    ok('Completion round-trip works', `model replied: ${JSON.stringify(reply.slice(0, 40))}`);
+    ok(`Reasoning model responds: ${config.featherless.reasoningModel}`);
   } catch (err) {
-    bad('Completion failed', err instanceof Error ? err.message : String(err));
-    return;
+    bad(
+      `Reasoning model unavailable: ${config.featherless.reasoningModel}`,
+      `${err instanceof Error ? err.message : String(err)}\n      ` +
+        'Glossary extraction and diagram drafting use this one. Live translation\n      ' +
+        'is unaffected. Set FEATHERLESS_REASONING_MODEL to a model on your plan.',
+    );
   }
 
   // 4. The one that actually matters: does a real translation preserve terms?

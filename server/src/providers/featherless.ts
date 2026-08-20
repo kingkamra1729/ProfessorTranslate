@@ -37,6 +37,64 @@ export function isConfigured(): boolean {
   return Boolean(config.featherless.apiKey);
 }
 
+/* ------------------------------------------------------------------ *
+ * Concurrency gate
+ * ------------------------------------------------------------------ */
+
+/**
+ * Caps in-flight requests to what the plan allows.
+ *
+ * Featherless reports a concurrency limit per plan - 4 on Feather Chat - and
+ * exceeding it returns 429. This app can blow through that without trying: one
+ * utterance fans out to every language in the room simultaneously, so a lecture
+ * with Hindi, Bengali, French and English listeners is already at the ceiling
+ * before the visualisation drafter wakes up and asks for a fifth.
+ *
+ * Queueing is strictly better than the alternative here. A translation that
+ * waits 200ms for a slot still arrives in time; one that 429s is retried after
+ * a backoff, or lost to passthrough - and the student hears the original
+ * English instead of their own language.
+ */
+class Gate {
+  private active = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(private limit: number) {}
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.limit) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  }
+
+  get inFlight(): number {
+    return this.active;
+  }
+
+  get waiting(): number {
+    return this.queue.length;
+  }
+}
+
+const gate = new Gate(config.featherless.concurrency);
+
+/** Current gate pressure, surfaced by /api/health for debugging a slow demo. */
+export function gateStatus(): { inFlight: number; waiting: number; limit: number } {
+  return {
+    inFlight: gate.inFlight,
+    waiting: gate.waiting,
+    limit: config.featherless.concurrency,
+  };
+}
+
 /**
  * One chat completion.
  *
@@ -52,7 +110,13 @@ export async function chat(
   if (!isConfigured()) {
     throw new FeatherlessError('FEATHERLESS_API_KEY is not set', undefined, false);
   }
+  return gate.run(() => chatUnguarded(messages, opts));
+}
 
+async function chatUnguarded(
+  messages: ChatMessage[],
+  opts: ChatOptions = {},
+): Promise<string> {
   const timeoutMs = opts.timeoutMs ?? config.featherless.timeoutMs;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -126,22 +190,68 @@ export async function chatWithRetry(
   }
 }
 
-/** Lists model ids, used by the setup screen to confirm the key works. */
+/**
+ * Confirms the key is accepted, using the cheapest call that proves it.
+ *
+ * Deliberately *not* done by listing models: Featherless serves 40,000+ of them
+ * and `/v1/models` is a 7.7 MB response that takes several seconds. Using that
+ * as an auth check means a valid key looks broken whenever the download is
+ * slow, which is exactly the false alarm a diagnostic must not produce.
+ */
+export async function checkAuth(): Promise<{ ok: boolean; detail: string }> {
+  if (!isConfigured()) return { ok: false, detail: 'FEATHERLESS_API_KEY is not set' };
+  try {
+    const reply = await chat(
+      [
+        { role: 'system', content: 'Reply with exactly one word: OK' },
+        { role: 'user', content: 'ping' },
+      ],
+      { maxTokens: 16, timeoutMs: 45_000 },
+    );
+    return { ok: true, detail: reply.slice(0, 60) };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Lists model ids.
+ *
+ * The response is large - see `checkAuth` - so the timeout is generous and
+ * callers should treat this as an optional lookup rather than a health check.
+ * Throws so a caller can tell "no models" apart from "the request failed".
+ */
 export async function listModels(): Promise<string[]> {
-  if (!isConfigured()) return [];
+  if (!isConfigured()) throw new FeatherlessError('FEATHERLESS_API_KEY is not set');
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), 90_000);
   try {
     const res = await fetch(`${config.featherless.baseUrl}/models`, {
       headers: { Authorization: `Bearer ${config.featherless.apiKey}` },
       signal: controller.signal,
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      throw new FeatherlessError(`Featherless returned ${res.status} listing models`, res.status);
+    }
     const json = (await res.json()) as { data?: Array<{ id?: string }> };
     return (json.data ?? []).map((m) => m.id).filter((id): id is string => Boolean(id));
-  } catch {
-    return [];
+  } catch (err) {
+    if (err instanceof FeatherlessError) throw err;
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new FeatherlessError('Timed out listing models (the catalogue is ~8 MB)');
+    }
+    throw new FeatherlessError(err instanceof Error ? err.message : 'Could not list models');
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Non-throwing variant for endpoints that only want a best-effort list. */
+export async function tryListModels(): Promise<string[]> {
+  try {
+    return await listModels();
+  } catch {
+    return [];
   }
 }
