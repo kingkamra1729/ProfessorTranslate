@@ -38,7 +38,17 @@ export class Room {
   private matcher: TermMatcher;
   private buffer = new UtteranceBuffer();
   private listeners = new Set<Listener>();
-  private professor: WebSocket | null = null;
+  /**
+   * Every connected professor socket, not just the most recent.
+   *
+   * A single slot looked sufficient - there is one lecturer - but it silently
+   * drops the previous connection whenever a new one arrives. A professor who
+   * reloads the page, whose laptop sleeps and reconnects, or who opens the
+   * console on a second screen ends up with a window that looks live and
+   * receives nothing. Holding a set means every open console stays current and
+   * a stale socket simply falls out on close.
+   */
+  private professors = new Set<WebSocket>();
   private glossaryTerms: GlossaryTerm[];
   private ended = false;
 
@@ -94,8 +104,12 @@ export class Room {
    * Membership
    * ---------------------------------------------------------------- */
 
+  private sendToProfessors(msg: ServerMessage): void {
+    for (const socket of this.professors) send(socket, msg);
+  }
+
   attachProfessor(socket: WebSocket): void {
-    this.professor = socket;
+    this.professors.add(socket);
     send(socket, {
       type: 'joined',
       role: 'professor',
@@ -106,7 +120,7 @@ export class Room {
   }
 
   detachProfessor(socket: WebSocket): void {
-    if (this.professor === socket) this.professor = null;
+    this.professors.delete(socket);
   }
 
   addListener(socket: WebSocket, lang: LangCode): Listener {
@@ -154,7 +168,7 @@ export class Room {
       counts[l.lang] = (counts[l.lang] ?? 0) + 1;
     }
     const msg: ServerMessage = { type: 'listeners', counts, total: this.listeners.size };
-    if (this.professor) send(this.professor, msg);
+    this.sendToProfessors(msg);
     this.broadcastToStudents(msg);
   }
 
@@ -166,7 +180,7 @@ export class Room {
   }
 
   broadcastAll(msg: ServerMessage): void {
-    if (this.professor) send(this.professor, msg);
+    this.sendToProfessors(msg);
     this.broadcastToStudents(msg);
   }
 
@@ -303,7 +317,7 @@ export class Room {
 
       pending.delete(next);
       this.broadcastToStudents({ type: 'translation', translation: ready }, lang);
-      if (this.professor) send(this.professor, { type: 'translation', translation: ready });
+      this.sendToProfessors({ type: 'translation', translation: ready });
       next++;
     }
     this.nextEmitByLang.set(lang, next);
@@ -323,7 +337,7 @@ export class Room {
   /** Sends a proposed visual to the professor for approval, not to students. */
   proposeVisual(viz: VizSpec): void {
     this.accumulator.addVisual(viz);
-    if (this.professor) send(this.professor, { type: 'viz', viz });
+    this.sendToProfessors({ type: 'viz', viz });
   }
 
   /**
@@ -370,9 +384,7 @@ export class Room {
     for (const s of fresh) this.offered.add(s.term.toLowerCase());
     this.pendingSuggestions = fresh;
 
-    if (this.professor) {
-      send(this.professor, { type: 'term-suggestions', suggestions: fresh });
-    }
+    this.sendToProfessors({ type: 'term-suggestions', suggestions: fresh });
   }
 
   /**
