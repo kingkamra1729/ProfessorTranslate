@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# Secrets. Never commit these.
+#
+# The pattern is deliberately broad: .env, .env.local, .env.production and any
+# other variant are all ignored, and .env.example is explicitly re-included so
+# the repo still documents what needs setting.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vercel/
+*.tsbuildinfo
+
+# Lecture recordings are runtime data, not source.
+data/*.json
+!data/.gitkeep
+
+# Logs and editor noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

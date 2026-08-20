@@ -1,0 +1,29 @@
+{
+  "name": "suvidha",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI live lecture translation that preserves technical terms in the language of instruction",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace web",
+    "start": "npm run start --workspace server",
+    "test": "npm run test --workspace server",
+    "test:live": "npm run test:live --workspace server",
+    "simulate": "npm run simulate --workspace server --",
+    "doctor": "npm run doctor --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

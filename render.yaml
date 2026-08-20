@@ -1,0 +1,31 @@
+# Render blueprint for the Suvidha realtime server.
+#
+# The frontend goes to Vercel; this is the half Vercel cannot host, because a
+# lecture room is a live in-memory object holding one professor socket and a set
+# of student sockets open for the length of a class.
+#
+# Deploy:  push to GitHub, then New > Blueprint on render.com and pick the repo.
+# Then set FEATHERLESS_API_KEY in the Render dashboard - never in this file.
+
+services:
+  - type: web
+    name: suvidha-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # sync:false means "prompt me in the dashboard, keep it out of the repo".
+      - key: FEATHERLESS_API_KEY
+        sync: false
+      - key: WOLFRAM_APP_ID
+        sync: false
+      - key: WOLFRAM_CLOUD_API_URL
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: NODE_VERSION
+        value: "22"

@@ -1,0 +1,8 @@
+# Normalise line endings so the repo is identical on Windows, macOS and Linux.
+# Without this, a Windows clone commits CRLF and every file looks modified to
+# everyone else.
+* text=auto eol=lf
+
+# Wolfram notebooks and lockfiles should not be diffed by hand.
+*.wl text eol=lf
+package-lock.json linguist-generated=true -diff
