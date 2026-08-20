@@ -5,8 +5,10 @@ import {
   isConfigured,
   type ChatMessage,
 } from '../providers/featherless.js';
+import { LOANWORDS } from '../data/loanwords.js';
 import {
   appendDroppedTerms,
+  buildMatcher,
   maskTerms,
   runsFromPlainText,
   unmaskPartial,
@@ -178,6 +180,49 @@ function cleanModelOutput(raw: string): string {
 }
 
 /* ------------------------------------------------------------------ *
+ * Loanword protection
+ * ------------------------------------------------------------------ */
+
+/**
+ * Combined matchers, keyed by the lecture's own matcher.
+ *
+ * Merging the loanword list into a room's glossary on every sentence would be
+ * wasteful, and a room's matcher is a stable object for the life of the
+ * lecture, so it makes a natural cache key. A WeakMap means a finished
+ * lecture's matcher is collected along with everything derived from it.
+ */
+const withLoanwordsCache = new WeakMap<TermMatcher, TermMatcher>();
+
+/**
+ * The matcher to use when translating into `to`.
+ *
+ * Loanwords are added only for languages written in another script. In French,
+ * "graph" and "graphe" are not visibly different kinds of word, and protecting
+ * the English form would leave English scattered through French prose where a
+ * French speaker would simply have used French.
+ *
+ * The lecture's own glossary is merged in *after* the loanwords are built so
+ * that a real term always wins: if a course has declared "line" or "system" as
+ * technical vocabulary, it is highlighted as one rather than quietly demoted.
+ */
+function matcherFor(base: TermMatcher, to: LangCode): TermMatcher {
+  if (LANGUAGES[to].latinScript) return base;
+
+  const cached = withLoanwordsCache.get(base);
+  if (cached) return cached;
+
+  const loanMatcher = buildMatcher(LOANWORDS);
+  const combined: TermMatcher = {
+    spaced: new Map([...loanMatcher.spaced, ...base.spaced]),
+    collapsed: new Map([...loanMatcher.collapsed, ...base.collapsed]),
+    maxTokens: Math.max(loanMatcher.maxTokens, base.maxTokens),
+  };
+
+  withLoanwordsCache.set(base, combined);
+  return combined;
+}
+
+/* ------------------------------------------------------------------ *
  * Partial delivery
  * ------------------------------------------------------------------ */
 
@@ -299,13 +344,13 @@ export async function translateUtterance(input: TranslateInput): Promise<Transla
     };
   }
 
-  const { masked, hits } = maskTerms(text, matcher);
+  const { masked, hits } = maskTerms(text, matcherFor(matcher, to));
 
   const passthrough = (): Translation => ({
     utteranceId,
     lang: to,
     text,
-    runs: runsFromPlainText(text, matcher, from, from),
+    runs: runsFromPlainText(text, matcherFor(matcher, to), from, from),
     latencyMs: Date.now() - started,
     engine: 'fallback',
   });

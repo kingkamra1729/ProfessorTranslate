@@ -23,7 +23,15 @@ export interface GlossaryTerm {
    * own language. The *definition* may be translated; the *term* may not.
    */
   gloss?: Partial<Record<LangCode, string>>;
-  source: 'manual' | 'imported' | 'auto';
+  /**
+   * Where this entry came from, and how it should be presented.
+   *
+   * 'loanword' is the odd one out: an everyday English word that survives
+   * translation for naturalness, not a technical term. It is protected the same
+   * way but never highlighted, because the highlight means "vocabulary you are
+   * meant to learn" and "zero" is not that.
+   */
+  source: 'manual' | 'imported' | 'auto' | 'loanword';
 }
 
 /* ------------------------------------------------------------------ *

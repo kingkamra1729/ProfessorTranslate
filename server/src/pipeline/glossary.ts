@@ -250,7 +250,9 @@ export function unmaskTerms(
     if (hit) {
       seen.add(slot);
       out.push(hit.surface);
-      pushRun(hit.surface, instructionLang, true);
+      // Both kinds are spoken in the language of instruction. Only a real term
+      // is flagged as one, because that flag drives the highlighting.
+      pushRun(hit.surface, instructionLang, hit.term.source !== 'loanword');
     }
     // A sentinel with no matching hit means the model invented one. Dropping it
     // silently beats surfacing bracket noise to the student.
