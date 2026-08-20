@@ -35,6 +35,15 @@ services:
       - key: NODE_VERSION
         value: "22"
 
+      # Install devDependencies too.
+      #
+      # Hosts commonly set NODE_ENV=production, which makes `npm install` skip
+      # devDependencies entirely. The frontend build needs Vite and Tailwind,
+      # which live there, so without this the build step fails on a machine
+      # where it works perfectly locally.
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
+
       # Serve the built frontend from this same process. This is what makes it
       # one service instead of two.
       - key: SERVE_STATIC

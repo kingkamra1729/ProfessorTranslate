@@ -173,6 +173,17 @@ npm install && npm run build   # build
 npm start                      # start
 ```
 
+Before deploying, run:
+
+```bash
+npm run check:deploy
+```
+
+Windows and macOS have case-insensitive filesystems; Render builds on Linux. An import
+written as `./Foo.js` for a file named `foo.ts` compiles fine locally and fails on the host
+with an error pointing at a file that visibly exists. This checks every relative import
+against the real directory listing.
+
 **Deploy:** push to GitHub → *New → Blueprint* on Render → pick the repo. `render.yaml`
 configures everything; set `FEATHERLESS_API_KEY`, `WOLFRAM_APP_ID` and `FIRECRAWL_API_KEY`
 in the dashboard when prompted. Never in the repo.
