@@ -14,7 +14,15 @@ import { config, describeConfig, repoRoot } from './config.js';
 import { GLOSSARY_PACKS, mergePacks } from './data/glossary-packs.js';
 import { buildGlossaryFromSource } from './pipeline/auto-glossary.js';
 import { proposeVisualFor, renderVisual, requestVisual } from './pipeline/visualize.js';
-import { createRoom, getRoom, listRooms, parseLang, type Listener, type Room } from './rooms.js';
+import {
+  createRoom,
+  getRoom,
+  listRooms,
+  parseLang,
+  sweepStaleRooms,
+  type Listener,
+  type Room,
+} from './rooms.js';
 import { listRecordings, loadRecording, saveRecording } from './store.js';
 import { buildMatcher } from './pipeline/glossary.js';
 import { translateUtterance } from './pipeline/translate.js';
@@ -423,6 +431,14 @@ server.listen(config.port, () => {
 // per-utterance, and both stand down when the request budget is under
 // pressure, so neither can ever sit in front of a translation a student is
 // waiting to hear.
+
+// Retire lectures that were abandoned rather than ended, so the home page
+// never advertises a live lecture that finished hours ago.
+setInterval(() => {
+  void sweepStaleRooms().then((ids) => {
+    if (ids.length > 0) console.log(`[rooms] retired abandoned lecture(s): ${ids.join(', ')}`);
+  });
+}, 5 * 60 * 1000);
 
 // Suggest a visual when recent speech looks plottable.
 setInterval(() => {

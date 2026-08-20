@@ -61,6 +61,17 @@ export class Room {
    * out, so a student never hears the second sentence of a thought before the
    * first.
    */
+  /**
+   * When this room last saw a professor or a spoken word.
+   *
+   * A lecture only ends when the professor presses the button, and quite often
+   * nobody does - they shut the laptop, the tab crashes, the wifi drops. The
+   * room then advertises itself as live on the home page indefinitely, so
+   * students join a lecture that finished hours ago and wait for speech that
+   * will never come.
+   */
+  private lastActivityAt = Date.now();
+
   private nextSeq = 0;
   private pendingByLang = new Map<LangCode, Map<number, Translation>>();
   private nextEmitByLang = new Map<LangCode, number>();
@@ -110,6 +121,7 @@ export class Room {
 
   attachProfessor(socket: WebSocket): void {
     this.professors.add(socket);
+    this.lastActivityAt = Date.now();
     send(socket, {
       type: 'joined',
       role: 'professor',
@@ -199,6 +211,7 @@ export class Room {
     if (this.ended) return;
     const trimmed = text.trim();
     if (!trimmed) return;
+    this.lastActivityAt = Date.now();
 
     if (!final) {
       const interim: Utterance = {
@@ -407,6 +420,20 @@ export class Room {
     this.pendingSuggestions = [];
   }
 
+  /**
+   * True when this room has been silent with nobody teaching for long enough
+   * that it is certainly over.
+   *
+   * Requires both conditions. A professor who is connected but writing on the
+   * board in silence is still teaching, and a room that is briefly
+   * professor-less because their laptop is reconnecting has not ended either.
+   */
+  isStale(idleMs: number): boolean {
+    if (this.ended) return false;
+    if (this.professors.size > 0) return false;
+    return Date.now() - this.lastActivityAt > idleMs;
+  }
+
   /* ---------------------------------------------------------------- *
    * Teardown
    * ---------------------------------------------------------------- */
@@ -443,10 +470,34 @@ export function getRoom(id: string): Room | undefined {
   return rooms.get(id);
 }
 
+/** How long a professor-less, silent room stays listed before it is retired. */
+export const STALE_ROOM_MS = 20 * 60 * 1000;
+
 export function listRooms(): LectureMeta[] {
   return [...rooms.values()]
-    .filter((r) => !r.isEnded)
+    .filter((r) => !r.isEnded && !r.isStale(STALE_ROOM_MS))
     .map((r) => ({ ...r.meta, utteranceCount: r.accumulator.transcriptLength }));
+}
+
+/**
+ * Ends rooms that were abandoned rather than finished.
+ *
+ * Archiving rather than discarding: the transcript is the professor's work and
+ * the students' revision material, and the fact that nobody pressed the button
+ * is no reason to throw it away.
+ */
+export async function sweepStaleRooms(): Promise<string[]> {
+  const retired: string[] = [];
+  for (const room of rooms.values()) {
+    if (!room.isStale(STALE_ROOM_MS)) continue;
+    try {
+      await room.end();
+      retired.push(room.meta.id);
+    } catch (err) {
+      console.warn('[rooms] could not retire', room.meta.id, err);
+    }
+  }
+  return retired;
 }
 
 export function closeRoom(id: string): void {
