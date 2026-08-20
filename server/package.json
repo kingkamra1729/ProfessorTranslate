@@ -16,7 +16,8 @@
     "test:reliability": "tsx src/reliability.test.ts",
     "test:scout": "tsx src/scout-e2e.test.ts",
     "test:extract": "tsx src/extract.test.ts",
-    "test:deployed": "tsx src/deployed.test.ts"
+    "test:deployed": "tsx src/deployed.test.ts",
+    "test:register": "tsx src/register.test.ts"
   },
   "dependencies": {
     "@suvidha/shared": "*",

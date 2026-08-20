@@ -39,16 +39,16 @@ import {
 /**
  * The interpreter's instructions.
  *
- * Kept deliberately terse. This prompt is re-read by the model on every
- * sentence of every lecture, and time-to-first-token scales with how much
- * there is to read before generation can start - measured at 1209ms for a
- * 1560-character prompt against 586ms for a 353-character one, with identical
- * term-preservation results. Half the student's waiting time was spent on
- * prose that changed nothing.
+ * Every character here is re-read by the model on every sentence of every
+ * lecture, and time-to-first-token scales with prompt length - an earlier
+ * 1560-character version of this cost 1209ms before the first word appeared
+ * against 586ms for a 353-character one. So nothing is included that does not
+ * change the output.
  *
- * The worked example survives the cut because it carries more instruction per
- * token than any of the rules did: it demonstrates output-only formatting,
- * placeholder copying, and placeholder *reordering* in one line.
+ * What earns its place is register guidance and worked examples. Rules about
+ * formatting turned out to be free to delete; instructions about *how the
+ * language is spoken* did not, because getting that wrong produces a
+ * translation the student has to decode rather than understand.
  */
 function systemPrompt(from: LangCode, to: LangCode): string {
   const source = LANGUAGES[from];
@@ -58,25 +58,82 @@ function systemPrompt(from: LangCode, to: LangCode): string {
     `Interpret ${source.name} lecture speech into spoken ${target.name}. Output only the ${target.name}.`,
     `⟦0⟧ ⟦1⟧ are technical terms: copy each one exactly, same digits, positioned where ${target.name} grammar wants it.`,
     'Translate only what was said - add no definitions or explanations of your own.',
-    'Keep it short and natural, as spoken aloud to a class. Numbers and symbols unchanged.',
-    `Example: So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧. → ${exampleFor(to)}`,
+    '',
+    registerGuidance(to),
+    '',
+    'Examples:',
+    ...examplesFor(to),
   ].join('\n');
 }
 
 /**
- * A worked example in the actual target language, which does more to pin down
- * register and placeholder handling than another paragraph of instructions.
+ * How the target language is actually spoken in a classroom.
+ *
+ * This is the difference between a translation a student understands and one
+ * they have to decode. Formal Hindi renders "zero" as शून्य and "damping" as
+ * अवमंदन - words that are correct, literary, and harder for the student than
+ * the English they replaced. A translation that sends someone to a dictionary
+ * has failed at the one job it had.
+ *
+ * Educated Indian speech code-mixes heavily and always has. A physics lecturer
+ * says "अब देखते हैं कि determinant zero हो तो क्या होता है" - not a Sanskritised
+ * rendering of it. Matching that register is not sloppiness; it is what
+ * comprehension actually requires.
  */
-function exampleFor(to: LangCode): string {
+function registerGuidance(to: LangCode): string {
   switch (to) {
     case 'hi':
-      return 'तो इस ⟦1⟧ का ⟦0⟧ ⟦2⟧ को खींचता है।';
+      return [
+        'REGISTER: everyday spoken Hindi as heard in an Indian classroom, not literary or Sanskritised Hindi.',
+        'Code-mix naturally. Keep in English the words people genuinely say in English: zero, energy, force, speed, direction, independent, system, value, graph, point, line, angle, positive, negative, increase, decrease, simple, example, use, matrix, curve, area, volume, mass, time.',
+        'Avoid शुद्ध हिन्दी coinages. Say zero not शून्य, energy not ऊर्जा, direction not दिशा, independent not स्वतंत्र, system not प्रणाली, frequency not आवृत्ति.',
+        'Avoid the bookish आइए; prefer देखते हैं, करते हैं, समझते हैं - the way a teacher actually talks.',
+      ].join('\n');
     case 'bn':
-      return 'তাহলে এই ⟦1⟧-এর ⟦0⟧ ⟦2⟧-কে প্রসারিত করে।';
+      return [
+        'REGISTER: everyday spoken Bengali as heard in an Indian classroom, not literary or Sanskritised Bengali.',
+        'Code-mix naturally. Keep in English the words people genuinely say in English: zero, energy, force, speed, direction, system, value, graph, point, line, angle, positive, negative, simple, example, matrix, curve, mass, time.',
+        'Avoid heavy তৎসম vocabulary. Say zero not শূন্য, energy not শক্তি, direction not দিক, frequency not কম্পাঙ্ক.',
+      ].join('\n');
     case 'fr':
-      return 'Donc la ⟦0⟧ de cette ⟦1⟧ étire le ⟦2⟧.';
+      return [
+        'REGISTER: natural spoken French as a lecturer talks to a class, not written academic prose.',
+        'Use everyday phrasing - on regarde, on voit, ça veut dire - rather than formal constructions.',
+        'French does not code-mix with English the way Hindi does, so translate ordinary words normally; only the ⟦n⟧ terms stay English.',
+      ].join('\n');
     default:
-      return 'So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧.';
+      return 'REGISTER: plain spoken English as a lecturer talks to a class.';
+  }
+}
+
+/**
+ * Worked examples, which pin down register far more effectively than rules.
+ *
+ * Chosen to demonstrate the three things that go wrong: placeholder
+ * repositioning, everyday words staying English, and the difference between
+ * how a teacher speaks and how a textbook is written.
+ */
+function examplesFor(to: LangCode): string[] {
+  switch (to) {
+    case 'hi':
+      return [
+        'So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧. → तो इस ⟦1⟧ का ⟦0⟧ ⟦2⟧ को stretch करता है।',
+        'Now let us see what happens when the ⟦0⟧ is zero. → अब देखते हैं कि ⟦0⟧ zero हो तो क्या होता है।',
+        '⟦0⟧ takes energy out of the system, so the ⟦1⟧ keeps dropping. → ⟦0⟧ system से energy निकाल देता है, तो ⟦1⟧ कम होता जाता है।',
+      ];
+    case 'bn':
+      return [
+        'So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧. → তাহলে এই ⟦1⟧-এর ⟦0⟧ ⟦2⟧-কে stretch করে।',
+        'Now let us see what happens when the ⟦0⟧ is zero. → এবার দেখি ⟦0⟧ zero হলে কী হয়।',
+        '⟦0⟧ takes energy out of the system, so the ⟦1⟧ keeps dropping. → ⟦0⟧ system থেকে energy বার করে দেয়, তাই ⟦1⟧ কমতে থাকে।',
+      ];
+    case 'fr':
+      return [
+        'So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧. → Donc le ⟦0⟧ de cette ⟦1⟧ étire le ⟦2⟧.',
+        'Now let us see what happens when the ⟦0⟧ is zero. → Maintenant regardons ce qui se passe quand le ⟦0⟧ vaut zéro.',
+      ];
+    default:
+      return ['So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧. → So the ⟦0⟧ of this ⟦1⟧ stretches the ⟦2⟧.'];
   }
 }
 
@@ -115,6 +172,48 @@ function cleanModelOutput(raw: string): string {
   if (firstLine) out = firstLine;
 
   return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Partial delivery
+ * ------------------------------------------------------------------ */
+
+/**
+ * Smallest gap between subtitle updates, in milliseconds.
+ *
+ * A streamed translation arrives as roughly forty fragments, and forwarding
+ * each one repaints the student's subtitle forty times in a second and a half.
+ * That is not "live", it is a flicker, and on a phone held at arm's length it
+ * is genuinely hard to read. Around seven updates a second still feels like
+ * text appearing as it is spoken, without the strobing.
+ */
+const PARTIAL_INTERVAL_MS = 150;
+
+/**
+ * Wraps the caller's partial handler so it is called at a readable rate.
+ *
+ * Rate-limited rather than batched: what matters is that the student sees text
+ * arriving continuously, not that they see every token the model produced.
+ */
+function throttlePartials(
+  onPartial: (text: string) => void,
+  hits: Parameters<typeof unmaskPartial>[1],
+): (fragment: string, soFar: string) => void {
+  let lastSentAt = 0;
+  let lastText = '';
+
+  return (_fragment, soFar) => {
+    const now = Date.now();
+    if (now - lastSentAt < PARTIAL_INTERVAL_MS) return;
+
+    const text = unmaskPartial(soFar, hits);
+    // A fragment that only completed a sentinel produces no visible change.
+    if (text === lastText) return;
+
+    lastSentAt = now;
+    lastText = text;
+    onPartial(text);
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -244,9 +343,7 @@ export async function translateUtterance(input: TranslateInput): Promise<Transla
     };
     try {
       const raw = input.onPartial
-        ? await chatStream(messages, options, (_fragment, soFar) => {
-            input.onPartial?.(unmaskPartial(soFar, hits));
-          })
+        ? await chatStream(messages, options, throttlePartials(input.onPartial, hits))
         : await chatWithRetry(messages, options);
       modelOutput = cleanModelOutput(raw);
       if (!modelOutput) return passthrough();
