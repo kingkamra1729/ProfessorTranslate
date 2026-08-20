@@ -2,6 +2,7 @@ import type { GlossaryTerm } from '@suvidha/shared';
 import { chatWithRetry, isConfigured } from '../providers/featherless.js';
 import { isFirecrawlConfigured, scrapeToMarkdown } from '../providers/firecrawl.js';
 import { config } from '../config.js';
+import { extractDocument } from './extract.js';
 
 /**
  * Glossary construction from course material.
@@ -122,10 +123,41 @@ export interface GlossarySource {
   url?: string;
   text?: string;
   subject?: string;
+  /** An uploaded course file: lecture notes, a chapter, a syllabus PDF. */
+  file?: { name: string; base64: string };
 }
 
-export async function buildGlossaryFromSource(src: GlossarySource): Promise<GlossaryTerm[]> {
+/** What the source turned out to be, reported back to the professor. */
+export interface GlossaryBuildInfo {
+  sourceKind: 'file' | 'url' | 'text';
+  detail: string;
+  charactersRead: number;
+}
+
+export async function buildGlossaryFromSource(
+  src: GlossarySource,
+): Promise<{ terms: GlossaryTerm[]; info: GlossaryBuildInfo }> {
   let material = (src.text ?? '').trim();
+  let info: GlossaryBuildInfo = {
+    sourceKind: 'text',
+    detail: 'pasted text',
+    charactersRead: material.length,
+  };
+
+  // A file outranks pasted text: uploading one is the more deliberate action.
+  if (src.file?.base64) {
+    const buffer = Buffer.from(src.file.base64, 'base64');
+    const doc = await extractDocument(src.file.name || 'upload', buffer);
+    material = doc.text;
+    info = {
+      sourceKind: 'file',
+      detail:
+        doc.method === 'pdf'
+          ? `${src.file.name} — ${doc.pages ?? '?'} pages`
+          : `${src.file.name}`,
+      charactersRead: material.length,
+    };
+  }
 
   if (!material && src.url) {
     if (!isFirecrawlConfigured()) {
@@ -134,10 +166,11 @@ export async function buildGlossaryFromSource(src: GlossarySource): Promise<Glos
       );
     }
     material = await scrapeToMarkdown(src.url);
+    info = { sourceKind: 'url', detail: src.url, charactersRead: material.length };
   }
 
   if (!material) {
-    throw new Error('Provide either a URL or some course text');
+    throw new Error('Upload a file, give a URL, or paste some course text');
   }
 
   if (!isConfigured()) {
@@ -192,5 +225,5 @@ export async function buildGlossaryFromSource(src: GlossarySource): Promise<Glos
     });
   }
 
-  return terms;
+  return { terms, info };
 }

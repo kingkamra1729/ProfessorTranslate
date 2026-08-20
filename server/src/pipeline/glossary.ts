@@ -320,6 +320,29 @@ function targetLangOf(result: UnmaskResult): LangCode {
 }
 
 /**
+ * Restores terms into a translation that is still arriving.
+ *
+ * A streamed response is inspected mid-flight, which means the tail is often a
+ * half-written sentinel - "⟦", "⟦1". Rendering that would show the student
+ * bracket noise that then rewrites itself, so any trailing partial sentinel is
+ * trimmed rather than displayed. Complete sentinels earlier in the text are
+ * restored normally.
+ *
+ * Returns text only. The run split, and therefore the audio, waits for the
+ * finished translation - a sentence cannot be voiced correctly until its word
+ * order is known.
+ */
+export function unmaskPartial(partial: string, hits: TermHit[]): string {
+  // Drop a trailing sentinel that has not finished arriving.
+  const trimmed = partial.replace(/⟦\d*⟧?$/, '');
+
+  return trimmed.replace(/⟦\s*(\d+)\s*⟧/g, (_match, digits: string) => {
+    const hit = hits.find((h) => h.slot === Number(digits));
+    return hit ? hit.surface : '';
+  });
+}
+
+/**
  * Splits plain untranslated text into runs, protecting known terms.
  *
  * Used by the fallback engine and by the "no translation needed" path, where a

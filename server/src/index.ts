@@ -47,7 +47,9 @@ app.use(
     credentials: false,
   }),
 );
-app.use(express.json({ limit: '2mb' }));
+// Large enough for a base64-encoded lecture PDF, which is the biggest thing
+// this API is ever asked to carry.
+app.use(express.json({ limit: '25mb' }));
 
 /* ------------------------------------------------------------------ *
  * REST
@@ -213,14 +215,18 @@ app.post('/api/recordings/:id/translate', async (req, res) => {
 
 /** Builds a glossary from a syllabus URL or pasted course text. */
 app.post('/api/glossary/build', async (req, res) => {
-  const { url, text, subject } = req.body ?? {};
+  const { url, text, subject, file } = req.body ?? {};
   try {
-    const terms = await buildGlossaryFromSource({
+    const { terms, info } = await buildGlossaryFromSource({
       url: typeof url === 'string' ? url : undefined,
       text: typeof text === 'string' ? text : undefined,
       subject: typeof subject === 'string' ? subject : undefined,
+      file:
+        file && typeof file.base64 === 'string'
+          ? { name: String(file.name ?? 'upload'), base64: file.base64 }
+          : undefined,
     });
-    res.json({ terms });
+    res.json({ terms, info });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Glossary build failed' });
   }

@@ -86,6 +86,8 @@ function Setup({
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState<GlossaryTerm[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
 
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,16 +99,40 @@ function Setup({
   const togglePack = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
 
+  /** Reads a file as base64 without pulling the whole thing through a string. */
+  const readAsBase64 = (f: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read that file'));
+      reader.onload = () => {
+        const result = String(reader.result ?? '');
+        // FileReader gives "data:<mime>;base64,<payload>"; the server wants the
+        // payload alone.
+        resolve(result.slice(result.indexOf(',') + 1));
+      };
+      reader.readAsDataURL(f);
+    });
+
   const runImport = async () => {
     setImporting(true);
     setImportError(null);
+    setImportInfo(null);
     try {
-      const { terms } = await api.buildGlossary({
-        url: importUrl.trim() || undefined,
-        text: importText.trim() || undefined,
-        subject: title,
-      });
+      const payload: Parameters<typeof api.buildGlossary>[0] = { subject: title };
+
+      if (file) {
+        payload.file = { name: file.name, base64: await readAsBase64(file) };
+      } else if (importUrl.trim()) {
+        payload.url = importUrl.trim();
+      } else {
+        payload.text = importText.trim();
+      }
+
+      const { terms, info } = await api.buildGlossary(payload);
       setImported(terms);
+      setImportInfo(
+        `${terms.length} terms from ${info.detail} (${info.charactersRead.toLocaleString()} characters read)`,
+      );
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Import failed');
     } finally {
@@ -244,11 +270,49 @@ function Setup({
         </p>
 
         <div className="grid gap-3">
+          <div>
+            <label
+              htmlFor="course-file"
+              className="mb-1.5 block text-sm font-medium text-ink-300"
+            >
+              Upload lecture notes or a syllabus
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                id="course-file"
+                type="file"
+                accept=".pdf,.txt,.md,.markdown,.csv,.tsv,.html,.htm,.rtf,.tex"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setImportError(null);
+                  setImportInfo(null);
+                }}
+                className="block w-full text-sm text-ink-300 file:mr-3 file:rounded-lg file:border-0 file:bg-ink-700 file:px-4 file:py-2 file:text-sm file:font-medium file:text-ink-100 hover:file:bg-ink-600"
+              />
+            </div>
+            <p className="mt-1 text-xs text-ink-400">
+              PDF or text. A scanned PDF has no text in it — reading those from photographs
+              is a later feature.
+            </p>
+            {file && (
+              <p className="mt-1.5 text-xs text-term-400">
+                {file.name} · {(file.size / 1024).toFixed(0)} kB
+                <button
+                  onClick={() => setFile(null)}
+                  className="ml-2 text-ink-400 underline hover:text-ink-200"
+                >
+                  remove
+                </button>
+              </p>
+            )}
+          </div>
+
           <Field
-            label="Course page URL"
+            label="…or a course page URL"
             value={importUrl}
             onChange={(e) => setImportUrl(e.target.value)}
             placeholder="https://…"
+            disabled={Boolean(file)}
           />
           <div>
             <label htmlFor="paste" className="mb-1.5 block text-sm font-medium text-ink-300">
@@ -265,15 +329,16 @@ function Setup({
           <div className="flex items-center gap-3">
             <Button
               onClick={runImport}
-              disabled={importing || (!importUrl.trim() && !importText.trim())}
+              disabled={importing || (!file && !importUrl.trim() && !importText.trim())}
             >
-              {importing ? 'Extracting…' : 'Extract terms'}
+              {importing ? 'Reading…' : 'Extract terms'}
             </Button>
             {imported.length > 0 && (
               <Badge tone="ok">{imported.length} terms found</Badge>
             )}
           </div>
           {importError && <p className="text-sm text-live-500">{importError}</p>}
+          {importInfo && <p className="text-sm text-ok-500">{importInfo}</p>}
           {imported.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {imported.slice(0, 24).map((t) => (

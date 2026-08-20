@@ -196,6 +196,15 @@ export type ServerMessage =
   | { type: 'error'; message: string }
   | { type: 'utterance'; utterance: Utterance }
   | { type: 'translation'; translation: Translation }
+  /**
+   * Subtitle text for a translation that is still being generated.
+   *
+   * Sent purely so the student can start reading. It carries no runs and is
+   * never spoken: audio waits for the finished sentence, because the voice
+   * split depends on final word order. Superseded by the `translation` message
+   * for the same utterance.
+   */
+  | { type: 'translation-partial'; utteranceId: string; lang: LangCode; text: string }
   | { type: 'viz'; viz: VizSpec }
   | { type: 'listeners'; counts: Partial<Record<LangCode, number>>; total: number }
   | { type: 'glossary'; glossary: GlossaryTerm[] }

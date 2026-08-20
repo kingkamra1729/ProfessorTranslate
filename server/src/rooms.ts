@@ -277,6 +277,22 @@ export class Room {
           from: this.meta.instructionLang,
           to: lang,
           matcher: this.matcher,
+          // Partials are sent as they arrive, deliberately bypassing the
+          // ordering queue below. They are throwaway subtitle text for one
+          // specific line, addressed by utterance id, so a later sentence
+          // showing its partial early cannot reorder anything the student
+          // reads - and waiting would defeat the entire point.
+          onPartial: (partialText) => {
+            this.broadcastToStudents(
+              {
+                type: 'translation-partial',
+                utteranceId: utterance.id,
+                lang,
+                text: partialText,
+              },
+              lang,
+            );
+          },
         });
         this.accumulator.addTranslation(translation);
         this.emitInOrder(lang, seq, translation);

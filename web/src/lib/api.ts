@@ -82,8 +82,16 @@ export const api = {
       body: JSON.stringify({ lang, from, count }),
     }),
 
-  buildGlossary: (body: { url?: string; text?: string; subject?: string }) =>
-    req<{ terms: GlossaryTerm[] }>('/api/glossary/build', {
+  buildGlossary: (body: {
+    url?: string;
+    text?: string;
+    subject?: string;
+    file?: { name: string; base64: string };
+  }) =>
+    req<{
+      terms: GlossaryTerm[];
+      info: { sourceKind: 'file' | 'url' | 'text'; detail: string; charactersRead: number };
+    }>('/api/glossary/build', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

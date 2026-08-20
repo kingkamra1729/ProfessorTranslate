@@ -14,13 +14,15 @@
     "test:features": "tsx src/features.test.ts",
     "bench": "tsx src/bench.ts",
     "test:reliability": "tsx src/reliability.test.ts",
-    "test:scout": "tsx src/scout-e2e.test.ts"
+    "test:scout": "tsx src/scout-e2e.test.ts",
+    "test:extract": "tsx src/extract.test.ts"
   },
   "dependencies": {
     "@suvidha/shared": "*",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "pdf-parse": "^2.4.5",
     "tsx": "^4.19.2",
     "ws": "^8.18.0"
   },

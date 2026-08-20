@@ -23,7 +23,8 @@
     "bench": "npm run bench --workspace server",
     "test:reliability": "npm run test:reliability --workspace server --",
     "test:scout": "npm run test:scout --workspace server",
-    "check:deploy": "node scripts/check-case.mjs"
+    "check:deploy": "node scripts/check-case.mjs",
+    "test:extract": "npm run test:extract --workspace server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -6,6 +6,7 @@ import {
   type LangCode,
   type LectureMeta,
   type ServerMessage,
+  type SpeechRun,
   type Translation,
   type Utterance,
   type VizSpec,
@@ -39,9 +40,50 @@ import {
  * catch-up - are the ones a person reaches for mid-sentence without looking.
  */
 
+/**
+ * Sample sentences for the audio test, one per language.
+ *
+ * Deliberately the real output shape - explanation in the student's language,
+ * terms in the language of instruction - so the test exercises the two-voice
+ * path rather than a single voice reading a canned phrase. If the terms come
+ * out in the wrong voice, this is where it shows.
+ */
+const SAMPLE_LINES: Record<LangCode, (instruction: LangCode) => SpeechRun[]> = {
+  hi: (i) => [
+    { lang: 'hi', text: 'यह एक ', isTerm: false },
+    { lang: i, text: 'matrix', isTerm: true },
+    { lang: 'hi', text: ' है, और इसका ', isTerm: false },
+    { lang: i, text: 'eigenvalue', isTerm: true },
+    { lang: 'hi', text: ' दो है।', isTerm: false },
+  ],
+  bn: (i) => [
+    { lang: 'bn', text: 'এটি একটি ', isTerm: false },
+    { lang: i, text: 'matrix', isTerm: true },
+    { lang: 'bn', text: ', এবং এর ', isTerm: false },
+    { lang: i, text: 'eigenvalue', isTerm: true },
+    { lang: 'bn', text: ' দুই।', isTerm: false },
+  ],
+  fr: (i) => [
+    { lang: 'fr', text: 'Voici une ', isTerm: false },
+    { lang: i, text: 'matrix', isTerm: true },
+    { lang: 'fr', text: ', et son ', isTerm: false },
+    { lang: i, text: 'eigenvalue', isTerm: true },
+    { lang: 'fr', text: ' vaut deux.', isTerm: false },
+  ],
+  en: () => [
+    { lang: 'en', text: 'This is a ', isTerm: false },
+    { lang: 'en', text: 'matrix', isTerm: true },
+    { lang: 'en', text: ', and its ', isTerm: false },
+    { lang: 'en', text: 'eigenvalue', isTerm: true },
+    { lang: 'en', text: ' is two.', isTerm: false },
+  ],
+};
+
 interface Line {
   utterance: Utterance;
   translation?: Translation;
+  /** Subtitle text arriving while the translation is still being generated. */
+  partial?: string;
 }
 
 export default function Student() {
@@ -69,6 +111,9 @@ export default function Student() {
   const [voices, setVoices] = useState<VoiceReport[]>([]);
   const [showOriginal, setShowOriginal] = useState(true);
   const [visual, setVisual] = useState<VizSpec | null>(null);
+  const [silentLangs, setSilentLangs] = useState<LangCode[]>([]);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const socketRef = useRef<LectureSocket | null>(null);
   const queueRef = useRef<SpeechQueue | null>(null);
@@ -86,6 +131,9 @@ export default function Student() {
       onDrop: (_id, reason) => {
         if (reason === 'behind') setDropped((n) => n + 1);
       },
+      onVoiceMissing: (missing) =>
+        setSilentLangs((prev) => (prev.includes(missing) ? prev : [...prev, missing])),
+      onSpeechError: setSpeechError,
     });
     // The queue must start in the same state the button claims it is in.
     // Audio begins off - both because `audioOn` starts false and because a
@@ -159,6 +207,17 @@ export default function Student() {
         });
         break;
 
+      case 'translation-partial':
+        if (msg.lang !== langRef.current) return;
+        setLines((prev) =>
+          prev.map((line) =>
+            line.utterance.id === msg.utteranceId && !line.translation
+              ? { ...line, partial: msg.text }
+              : line,
+          ),
+        );
+        break;
+
       case 'translation':
         if (msg.translation.lang !== langRef.current) return;
         setLines((prev) =>
@@ -213,7 +272,10 @@ export default function Student() {
     localStorage.setItem('suvidha:lang', next);
     // Anything already queued is in the old language and would be jarring.
     queueRef.current?.clear();
+    queueRef.current?.resetDiagnostics();
     setDropped(0);
+    setSilentLangs([]);
+    setSpeechError(null);
     socketRef.current?.send({ type: 'student:set-lang', lang: next });
     socketRef.current?.setRejoin({
       type: 'student:join',
@@ -233,6 +295,36 @@ export default function Student() {
     } else {
       queueRef.current?.setEnabled(false);
     }
+  };
+
+  /**
+   * Speaks a sample line in the chosen language.
+   *
+   * Exists because "no sound" has several causes that look identical from the
+   * student's seat - audio not switched on, no voice for the language, the
+   * professor simply not talking yet - and a student mid-lecture has no way to
+   * tell them apart. One button that either produces sound or explains why
+   * removes the guesswork before it matters.
+   */
+  const testAudio = () => {
+    unlockAudio();
+    setTesting(true);
+    setSpeechError(null);
+    queueRef.current?.resetDiagnostics();
+    setSilentLangs([]);
+
+    const instruction = lecture?.instructionLang ?? 'en';
+    const sample = SAMPLE_LINES[lang] ?? SAMPLE_LINES.en;
+    const wasEnabled = audioOn;
+    queueRef.current?.setEnabled(true);
+    queueRef.current?.enqueue({
+      id: `test-${Date.now()}`,
+      runs: sample(instruction),
+    });
+    window.setTimeout(() => {
+      setTesting(false);
+      if (!wasEnabled) queueRef.current?.setEnabled(false);
+    }, 4000);
   };
 
   // Auto-scroll, but only when the reader is already at the bottom. Yanking the
@@ -347,6 +439,14 @@ export default function Student() {
               Show what the professor said
             </label>
 
+            <button
+              onClick={testAudio}
+              disabled={testing}
+              className="text-sm font-medium text-brand-400 underline disabled:opacity-50"
+            >
+              {testing ? 'Playing…' : 'Test audio'}
+            </button>
+
             {depth > 1 && (
               <button
                 onClick={() => queueRef.current?.skipToLatest()}
@@ -358,10 +458,32 @@ export default function Student() {
           </div>
         </Card>
 
-        {/* Honest warnings */}
-        {audioOn && missingVoice && (
+        {/* Audio status. The loudest thing on the page when it is wrong. */}
+        {(silentLangs.length > 0 || (audioOn && missingVoice)) && (
+          <Card className="mb-4 border-live-500/50 bg-live-500/10 p-4">
+            <p className="text-sm font-semibold text-live-500">
+              🔇 You will not hear{' '}
+              {(silentLangs.length > 0 ? silentLangs : [lang])
+                .map((l) => LANGUAGES[l].name)
+                .join(' or ')}{' '}
+              on this device
+            </p>
+            <p className="mt-1.5 text-sm text-ink-200">
+              This device has no {LANGUAGES[lang].name} voice installed, so speech
+              synthesis produces silence. The subtitles below are complete and correct —
+              nothing is missing from them.
+            </p>
+            <p className="mt-2 text-xs text-ink-400">
+              A phone almost always has the voice. Open this same link on Android or iOS.
+              On Windows: Settings → Time &amp; language → Language &amp; region → Add a
+              language, and tick <strong>Speech</strong>.
+            </p>
+          </Card>
+        )}
+
+        {speechError && (
           <Card className="mb-4 border-brand-500/40 bg-brand-500/5 p-3">
-            <p className="text-sm text-brand-400">{missingVoice.detail}</p>
+            <p className="text-sm text-brand-400">Speech engine reported: {speechError}</p>
           </Card>
         )}
         {dropped > 0 && (
@@ -427,6 +549,18 @@ export default function Student() {
                     data-lang={lang}
                   >
                     <RunText runs={line.translation.runs} />
+                  </p>
+                ) : line.partial ? (
+                  /* Arriving live. Shown at full contrast because it is real
+                     translated text, not a placeholder - only the trailing
+                     cursor signals that more is coming. */
+                  <p
+                    className="text-xl leading-relaxed text-ink-100 sm:text-2xl"
+                    lang={lang}
+                    data-lang={lang}
+                  >
+                    {line.partial}
+                    <span className="ml-0.5 inline-block h-5 w-2 translate-y-0.5 animate-pulse bg-brand-500/70" />
                   </p>
                 ) : (
                   <p className="text-xl leading-relaxed text-ink-500 sm:text-2xl">

@@ -146,6 +146,18 @@ export interface SpeechQueueEvents {
   /** Fired when an item is discarded to catch up. */
   onDrop?: (id: string, reason: 'behind' | 'cleared') => void;
   onDepthChange?: (depth: number) => void;
+  /**
+   * Fired when a run cannot be spoken because no voice exists for its language.
+   *
+   * This is the failure that most needs reporting and is least visible.
+   * `speechSynthesis.speak()` accepts an utterance in a language it has no
+   * voice for, reports no error, fires no `error` event, and simply produces
+   * nothing. Without this callback a student sits in silence while the app
+   * shows every sign of working.
+   */
+  onVoiceMissing?: (lang: LangCode) => void;
+  /** Fired when the platform reports a synthesis error. */
+  onSpeechError?: (detail: string) => void;
 }
 
 /**
@@ -157,6 +169,8 @@ export class SpeechQueue {
   private enabled = true;
   private rate = 1.05;
   private keepAlive: ReturnType<typeof setInterval> | null = null;
+  /** Languages already reported as unvoiceable, so the UI is told once. */
+  private reportedMissing = new Set<LangCode>();
 
   /**
    * How many utterances may wait before we start discarding.
@@ -249,6 +263,12 @@ export class SpeechQueue {
           u.voice = voice;
           u.lang = voice.lang;
         } else {
+          // Nothing will be heard for this run. Say so, loudly, once per
+          // language - the platform will not.
+          if (!this.reportedMissing.has(run.lang)) {
+            this.reportedMissing.add(run.lang);
+            this.events.onVoiceMissing?.(run.lang);
+          }
           u.lang = LANGUAGES[run.lang].ttsLocales[0];
         }
         // Terms are the words the student is meant to retain, so they are said
@@ -266,7 +286,15 @@ export class SpeechQueue {
     const last = utterances[utterances.length - 1];
     last.addEventListener('end', () => this.finish(item));
     // An error on any run must not strand the queue.
-    last.addEventListener('error', () => this.finish(item));
+    last.addEventListener('error', (e) => {
+      const err = e as SpeechSynthesisErrorEvent;
+      // 'interrupted' and 'canceled' are our own doing - skipping ahead or
+      // switching language - and are not worth alarming the student about.
+      if (err.error && err.error !== 'interrupted' && err.error !== 'canceled') {
+        this.events.onSpeechError?.(err.error);
+      }
+      this.finish(item);
+    });
 
     // Handing every run to the platform queue at once, rather than chaining
     // them on 'end', keeps the gap between a term and the words around it below
@@ -302,6 +330,11 @@ export class SpeechQueue {
     if (!this.keepAlive) return;
     clearInterval(this.keepAlive);
     this.keepAlive = null;
+  }
+
+  /** Forgets which languages were reported, e.g. after voices finish loading. */
+  resetDiagnostics(): void {
+    this.reportedMissing.clear();
   }
 
   dispose(): void {

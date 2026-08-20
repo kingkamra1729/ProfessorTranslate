@@ -64,6 +64,7 @@ guessing, and a wrong guess sends a Hindi voice at a Latin word.
 | **Any language per student** | One lecture, each student on a different language, switchable mid-sentence |
 | **Diagrams** | Wolfram-rendered plots proposed from the lecture content — professor approves before the class sees anything |
 | **Accessibility** | Every diagram carries a spoken description, translated the same way. Screen-reader live regions throughout |
+| **Course files** | Upload lecture notes or a syllabus (PDF or text) and the glossary builds itself |
 | **Missing terms caught live** | The system watches for subject vocabulary the glossary lacks and offers it to the professor mid-lecture |
 | **Recordings** | Archived as *text*, not audio — so replay renders into a language nobody chose during the lecture, on demand |
 
@@ -145,6 +146,7 @@ npm test           # term-protection engine, 21 assertions, no network
 npm run test:live  # full WebSocket pipeline against a running server, 23 assertions
 npm run test:features  # Wolfram render + Firecrawl import, 12 assertions (spends credits)
 npm run bench      # times candidate models on a realistic generation
+npm run test:extract   # course-file extraction incl. a real PDF, 11 assertions
 npm run test:scout     # missing-term suggestions reach the professor, live
 npm run test:reliability  # term survival rate over many runs (see below)
 ```
@@ -220,6 +222,23 @@ git status --porcelain | grep -E "\.env$"
 That must print nothing. Keys belong in Render's dashboard.
 
 ---
+
+## Latency, measured
+
+"It feels slow" is not actionable, so `npx tsx server/src/latency.test.ts <url>` breaks the
+path from spoken word to translated line into stages. Against production it found transport
+was 116ms and the model 1376ms — 92% of the wait. Two changes followed:
+
+**The system prompt was half the delay.** Time-to-first-token scales with how much prompt
+the model reads before generating, and the original was 1560 characters of rules re-read on
+every sentence of every lecture. Cutting it to 353 took time-to-first-token from 1209ms to
+**586ms** with term preservation unchanged at 100%. The worked example survived the cut
+because it teaches more per token than the rules did.
+
+**Translation streams.** Subtitle text now reaches the student token by token instead of
+after the final one, so the first translated word appears at **637ms** rather than the line
+landing at ~1750ms. Audio still waits for the complete sentence — the voice split depends on
+final word order, and half a sentence cannot be voiced correctly.
 
 ## What the provider actually does
 

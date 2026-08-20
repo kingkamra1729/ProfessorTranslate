@@ -83,7 +83,7 @@ async function testGlossaryImport() {
 
   let terms;
   try {
-    terms = await buildGlossaryFromSource({ url, subject: 'Physics — oscillations' });
+    terms = (await buildGlossaryFromSource({ url, subject: 'Physics — oscillations' })).terms;
   } catch (err) {
     check('scraped and extracted terms', false, err instanceof Error ? err.message : String(err));
     return;

@@ -174,6 +174,111 @@ async function chatUnguarded(
   }
 }
 
+/**
+ * Streaming completion.
+ *
+ * Worth the extra code because of where the time actually goes. Measured
+ * against this provider, a short translation takes ~1.8s in total but produces
+ * its first token after ~0.6s. Waiting for the whole response means a student
+ * stares at nothing for the full 1.8s; streaming puts words on their screen in
+ * a third of that, and the rest arrives while they are already reading.
+ *
+ * `onDelta` receives text fragments as they arrive. The full text is returned.
+ */
+export async function chatStream(
+  messages: ChatMessage[],
+  opts: ChatOptions,
+  onDelta: (fragment: string, soFar: string) => void,
+): Promise<string> {
+  if (!isConfigured()) {
+    throw new FeatherlessError('FEATHERLESS_API_KEY is not set', undefined, false);
+  }
+
+  return gate.run(async () => {
+    const timeoutMs = opts.timeoutMs ?? config.featherless.timeoutMs;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${config.featherless.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.featherless.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: opts.model ?? config.featherless.model,
+          messages,
+          stream: true,
+          temperature: opts.temperature ?? 0.2,
+          max_tokens: opts.maxTokens ?? 512,
+          ...(opts.stop ? { stop: opts.stop } : {}),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new FeatherlessError(
+          `Featherless returned ${res.status}: ${body.slice(0, 300)}`,
+          res.status,
+          res.status === 429 || res.status >= 500,
+        );
+      }
+      if (!res.body) throw new FeatherlessError('Featherless returned no stream body');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let text = '';
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Server-sent events: one JSON payload per `data:` line.
+        let nl: number;
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line.startsWith('data:')) continue;
+
+          const payload = line.slice(5).trim();
+          if (payload === '[DONE]') continue;
+
+          try {
+            const json = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+            };
+            const fragment = json.choices?.[0]?.delta?.content;
+            if (fragment) {
+              text += fragment;
+              onDelta(fragment, text);
+            }
+          } catch {
+            // Keep-alive or a fragment split across reads; the buffer handles it.
+          }
+        }
+      }
+
+      return text.trim();
+    } catch (err) {
+      if (err instanceof FeatherlessError) throw err;
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new FeatherlessError(`Timed out after ${timeoutMs}ms`, undefined, true);
+      }
+      throw new FeatherlessError(
+        err instanceof Error ? err.message : 'Unknown Featherless failure',
+        undefined,
+        true,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+}
+
 /** One retry on retryable failures, with a short fixed backoff. */
 export async function chatWithRetry(
   messages: ChatMessage[],
