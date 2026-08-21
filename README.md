@@ -291,6 +291,35 @@ cloud ASR drops in behind the same interface when accuracy justifies the cost.
 
 ---
 
+## Required disclosures
+
+Per section 08 of the hackathon handbook. Everything used to build or run this project.
+
+### AI tools
+
+| Tool | Specific model | What it was used for |
+|---|---|---|
+| **Claude Code** (Anthropic) | Opus 5 | Coding assistant. Used throughout to write, debug and test the application, and to run the measurement probes in `server/src/*.test.ts`. |
+| **Featherless AI** | `Qwen/Qwen3-30B-A3B-Instruct-2507` | Every language task at runtime: live lecture translation, glossary extraction from uploaded course files, live detection of missing technical terms, and drafting diagram specifications. One model does all four. |
+| **Wolfram\|Alpha** | Simple API + Full Results API | Rendering mathematical and physical diagrams from a Wolfram Language expression, and short factual answers used in the spoken description of each plot. |
+| **Firecrawl** | Scrape API v1 | Converting a course page or syllabus URL into clean markdown, which the glossary builder then mines for technical vocabulary. |
+| **Web Speech API** | Browser-native (Chrome/Edge) | Speech recognition for the professor's microphone and speech synthesis for the student's earpiece. No cloud speech service is used. |
+
+Model selection was measured rather than assumed — see *Latency, measured* above and `npm run bench`.
+Larger models on the same provider were slower **and** failed to preserve technical terms.
+
+### Datasets
+
+| Data | Source | Licence |
+|---|---|---|
+| Subject glossary packs (linear algebra, calculus, physics, CS) | Written by hand for this project, in `server/src/data/glossary-packs.ts` | Ours, MIT with the repository |
+| Everyday loanword list | Written by hand, in `server/src/data/loanwords.ts` | Ours, MIT with the repository |
+| Simulated lecture scripts used for testing and demos | Written by hand, in `server/src/simulate.ts` | Ours, MIT with the repository |
+| Wikipedia article on simple harmonic motion | `en.wikipedia.org`, fetched at test time via Firecrawl | CC BY-SA 4.0 — used only as a live input in `npm run test:features`, not redistributed |
+
+No model was trained or fine-tuned. No user data was collected. Lecture recordings stay on
+the server that hosts the app.
+
 ## Known limits
 
 - Recognition quality on heavily accented speech in a noisy hall is the weakest link.
