@@ -28,7 +28,8 @@
     "test:asr": "tsx web/src/lib/asr.test.ts",
     "test:deployed": "npm run test:deployed --workspace server --",
     "test:register": "npm run test:register --workspace server --",
-    "test:sustained": "npm run test:sustained --workspace server --"
+    "test:sustained": "npm run test:sustained --workspace server --",
+    "onepager:pdf": "node scripts/build-onepager-pdf.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

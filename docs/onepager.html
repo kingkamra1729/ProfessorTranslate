@@ -327,9 +327,53 @@
     * { animation: none !important; transition: none !important; }
   }
 
+  /* ---------- print ----------
+     A printed page has no viewer theme, so the light palette is restored
+     explicitly here. Without it, anyone printing from a dark-mode browser gets
+     a black PDF - correct on screen, wrong on paper and wrong in an inbox. */
   @media print {
-    body { background: #fff; }
-    .page { padding: 0; max-width: none; }
+    :root {
+      --paper:      #FFFFFF;
+      --surface:    #FBFCFD;
+      --ink:        #12161F;
+      --ink-soft:   #3D4654;
+      --ink-faint:  #6B7686;
+      --rule:       #D2D8E0;
+      --rule-soft:  #E6EAEF;
+      --term:       #0B6459;
+      --term-wash:  #EAF4F2;
+      --hindi:      #5F3B80;
+      --hindi-wash: #F1EBF7;
+    }
+
+    /* The teal is the argument, not decoration: it marks which words survived
+       translation. Losing it to Chrome's default background suppression would
+       lose the point of the specimen. */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    @page { margin: 14mm 15mm; }
+
+    body { background: #fff; font-size: 10.5pt; line-height: 1.55; }
+    .page { padding: 0; max-width: none; gap: 1.6rem; }
+
+    /* Nothing that reads as a single unit should straddle a page break. */
+    .specimen,
+    .origin,
+    .wrong,
+    .mech > div,
+    .ledger > div,
+    .ledger li,
+    .metrics tr,
+    footer { break-inside: avoid; }
+
+    h2, .eyebrow, .ledger h3 { break-after: avoid; }
+    section { break-inside: auto; }
+
+    .wordmark b { font-size: 1.7rem; }
+    .thesis { font-size: 1.15rem; }
+    .line { line-height: 2.4; }
+
+    .links a { border-bottom: none; }
   }
 </style>
 
