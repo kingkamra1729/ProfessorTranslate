@@ -20,6 +20,10 @@ Student:    "तो इस matrix का eigenvalue हमें बताता
 The student understands the sentence *and* still meets `eigenvalue` — the word that is in
 the textbook, on the exam, and in the interview.
 
+**One pager:** [`docs/onepager.html`](docs/onepager.html) — also served live at
+[professortranslate.onrender.com/onepager.html](https://professortranslate.onrender.com/onepager.html)
+and readable as [`ONEPAGER.md`](ONEPAGER.md).
+
 ---
 
 ## Why this is not just translation

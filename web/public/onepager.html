@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Suvidha - live lecture translation that preserves technical vocabulary in the language of instruction.">
+<title>Suvidha</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;600&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+  /* Light palette — the complete set. Dark redefines only these tokens. */
+  :root {
+    --paper:      #F6F7F9;
+    --surface:    #FFFFFF;
+    --ink:        #12161F;
+    --ink-soft:   #4A5464;
+    --ink-faint:  #7C8797;
+    --rule:       #DCE1E8;
+    --rule-soft:  #E8ECF1;
+
+    /* The app marks protected vocabulary in teal. On this page the colour
+       carries the same meaning: this word survived translation. */
+    --term:       #0E7C6E;
+    --term-wash:  #E4F3F0;
+    --hindi:      #7A4E9E;
+    --hindi-wash: #EFE8F6;
+
+    --measure: 34rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0D1016;
+      --surface:    #141821;
+      --ink:        #EDF0F4;
+      --ink-soft:   #A3AEBF;
+      --ink-faint:  #6E7889;
+      --rule:       #262C38;
+      --rule-soft:  #1D222C;
+      --term:       #4FD1C5;
+      --term-wash:  #0E2E2B;
+      --hindi:      #C4A5E8;
+      --hindi-wash: #241B33;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #0D1016;
+    --surface:    #141821;
+    --ink:        #EDF0F4;
+    --ink-soft:   #A3AEBF;
+    --ink-faint:  #6E7889;
+    --rule:       #262C38;
+    --rule-soft:  #1D222C;
+    --term:       #4FD1C5;
+    --term-wash:  #0E2E2B;
+    --hindi:      #C4A5E8;
+    --hindi-wash: #241B33;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .wordmark b {
+    font-family: Spectral, Georgia, serif;
+    font-size: 2.1rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1;
+  }
+  .wordmark span {
+    font-family: "Noto Sans Devanagari", sans-serif;
+    font-size: 1.15rem;
+    color: var(--ink-faint);
+  }
+
+  .thesis {
+    font-family: Spectral, Georgia, serif;
+    font-size: 1.4rem;
+    line-height: 1.4;
+    max-width: 30rem;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .thesis em { font-style: italic; color: var(--term); }
+
+  .links {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+  }
+  .links a { color: var(--term); text-decoration: none; border-bottom: 1px solid var(--rule); padding-bottom: 1px; }
+  .links a:hover { border-bottom-color: var(--term); }
+  .links a:focus-visible { outline: 2px solid var(--term); outline-offset: 3px; }
+
+  /* ---------- the specimen: the product's actual output ---------- */
+
+  .specimen {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.75rem 1.5rem 1.4rem;
+    overflow-x: auto;
+  }
+
+  .said {
+    font-size: 0.86rem;
+    color: var(--ink-faint);
+    margin: 0 0 1.1rem;
+  }
+  .said b { color: var(--ink-soft); font-weight: 500; }
+
+  /* Wraps rather than scrolling. This is the one line the whole page exists to
+     show; making a reader drag it sideways to finish it would be perverse.
+     Each span carries its own gloss, so wrapping costs nothing. */
+  .line {
+    font-family: "Noto Sans Devanagari", "IBM Plex Sans", sans-serif;
+    font-size: clamp(1.05rem, 3.4vw, 1.32rem);
+    line-height: 2.6;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.35em;
+  }
+
+  /* Each span is glossed underneath with the voice that speaks it. */
+  .v {
+    position: relative;
+    padding-bottom: 2px;
+    border-bottom: 2px solid var(--hindi);
+  }
+  .v.en {
+    color: var(--term);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    border-bottom-color: var(--term);
+  }
+  .v::after {
+    content: attr(data-voice);
+    position: absolute;
+    left: 0;
+    top: calc(100% + 3px);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.56rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--hindi);
+    white-space: nowrap;
+  }
+  .v.en::after { color: var(--term); }
+
+  .gloss {
+    margin: 1.15rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--rule-soft);
+    font-size: 0.84rem;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- prose ---------- */
+
+  section { display: flex; flex-direction: column; gap: 0.7rem; }
+
+  h2 {
+    font-family: Spectral, Georgia, serif;
+    font-size: 1.16rem;
+    font-weight: 600;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  p { margin: 0; max-width: var(--measure); }
+  p.wide { max-width: none; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0;
+  }
+
+  code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.88em;
+    background: var(--term-wash);
+    color: var(--term);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+  .deva { font-family: "Noto Sans Devanagari", sans-serif; }
+
+  /* The counter-example: what an ordinary translator does. */
+  .wrong {
+    border-left: 2px solid var(--rule);
+    padding-left: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .wrong .bad {
+    font-family: "Noto Sans Devanagari", sans-serif;
+    font-size: 1.15rem;
+    color: var(--ink);
+  }
+  .wrong small { font-size: 0.82rem; color: var(--ink-faint); }
+
+  /* ---------- mechanism ---------- */
+
+  .mech { display: grid; gap: 1.4rem; }
+  @media (min-width: 40rem) { .mech { grid-template-columns: 1fr 1fr; gap: 1.4rem 2rem; } }
+
+  .mech > div { display: flex; flex-direction: column; gap: 0.35rem; }
+  .mech h3 {
+    margin: 0;
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .mech p { font-size: 0.9rem; color: var(--ink-soft); max-width: none; }
+
+  /* ---------- measurements ---------- */
+
+  .metrics {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.87rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .metrics th {
+    text-align: left;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.64rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 400;
+    padding: 0 0 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .metrics td {
+    padding: 0.62rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: baseline;
+  }
+  .metrics td:last-child {
+    text-align: right;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 500;
+    color: var(--term);
+    white-space: nowrap;
+    padding-left: 1rem;
+  }
+  .metrics tr:last-child td { border-bottom: none; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-size: 0.84rem;
+    color: var(--ink-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  footer strong { color: var(--ink); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .page { padding: 0; max-width: none; }
+  }
+</style>
+
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <div class="wordmark">
+      <b>Suvidha</b>
+      <span lang="hi">सुविधा</span>
+    </div>
+    <p class="thesis">Live lecture translation that <em>refuses to translate the vocabulary.</em></p>
+    <div class="links">
+      <a href="https://professortranslate.onrender.com">professortranslate.onrender.com</a>
+      <a href="https://github.com/kingkamra1729/ProfessorTranslate">github.com/kingkamra1729/ProfessorTranslate</a>
+    </div>
+  </header>
+
+  <!-- The thesis is the output itself, glossed like a linguistics example. -->
+  <div class="specimen">
+    <p class="said">The professor says: <b>“So the eigenvalue of this matrix tells us how much the eigenvector is stretched.”</b></p>
+    <p class="line" lang="hi"><span class="v" data-voice="हिन्दी">तो इस</span> <span class="v en" data-voice="english">matrix</span> <span class="v" data-voice="हिन्दी">का</span> <span class="v en" data-voice="english">eigenvalue</span> <span class="v" data-voice="हिन्दी">बताता है कि</span> <span class="v en" data-voice="english">eigenvector</span> <span class="v" data-voice="हिन्दी">कितना</span> <span class="v en" data-voice="english">stretch</span> <span class="v" data-voice="हिन्दी">होता है।</span></p>
+    <p class="gloss">One sentence, two voices, in the student’s earpiece. The explanation is translated. The vocabulary never is.</p>
+  </div>
+
+  <section>
+    <p class="eyebrow">Who this is for</p>
+    <h2>A first-year engineering student who thinks in Hindi or Bengali</h2>
+    <p>They passed the entrance exam. They can read the textbook, slowly. But the lecture is delivered in English at speaking pace, and by the time they have decoded one sentence the professor is three sentences further on.</p>
+    <p>They are not failing because the material is hard. They are failing because it arrives in a language they are still translating in their head. This is not a hypothetical user — it is most of a classroom, in most colleges in India.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The barrier</p>
+    <h2>Not the terminology. The explanation.</h2>
+    <p>A student can look up <em>eigenvalue</em>. What they cannot look up is the sentence the lecturer improvised to make it land — <em>“so it tells you how much the vector gets stretched”</em> — the aside that connected it to last week, the <em>“think about why that must be true.”</em> That sentence is never written down. It exists for four seconds and is gone.</p>
+    <p>And the obvious fix makes it worse:</p>
+    <div class="wrong">
+      <span class="bad" lang="hi">तो इस आव्यूह का अभिलक्षणिक मान…</span>
+      <small>What an ordinary translator produces. Correct, literary, and a word that appears in no textbook, no exam, and no job interview.</small>
+    </div>
+    <p>The student now understands the sentence and cannot answer the question. The sentence got easier; the degree got harder.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">How it works</p>
+    <h2>Four decisions, each one measurable</h2>
+    <div class="mech">
+      <div>
+        <h3>The model never sees the terms</h3>
+        <p>Each is replaced by a sentinel before translation and spliced back after. It is not asked nicely to preserve them — it is never given them. Measured at 0% loss across 162 translations.</p>
+      </div>
+      <div>
+        <h3>The same pass decides the voice</h3>
+        <p>Restoring a term is the only moment we know which characters are vocabulary and which are explanation. That boundary drives both the highlight and the voice switch, so the subtitle and the audio always agree.</p>
+      </div>
+      <div>
+        <h3>It speaks the way people speak</h3>
+        <p>Real classroom Hindi code-mixes: <span class="deva">अब देखते हैं कि</span> <code>determinant</code> <code>zero</code> <span class="deva">हो तो क्या होता है</span>. A translation that sends a student to a dictionary has failed at its one job.</p>
+      </div>
+      <div>
+        <h3>It catches its own gaps</h3>
+        <p>The glossary is the single point of failure, so the system listens for vocabulary it does not yet protect and offers it to the professor mid-lecture. Accepting one protects it for the rest of the class.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Beyond translation</p>
+    <h2>Built for the student who also cannot see the board</h2>
+    <p>Every diagram carries a spoken description, translated by the same term-preserving path — so a plot is heard, not missed. Diagrams are rendered by Wolfram but published only once the professor approves them, because an unreviewed generated diagram on two hundred screens teaches the wrong thing very efficiently.</p>
+    <p>Recordings are archived as <em>text</em>, not audio, so a lecture can be re-voiced afterwards in a language nobody chose that day, at any speed, or read by a screen reader.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">What is real</p>
+    <h2>Everything above runs. Nothing is mocked.</h2>
+    <table class="metrics">
+      <thead>
+        <tr><th scope="col">Measured</th><th scope="col">Result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Technical terms lost in translation, over 162 runs</td><td>0%</td></tr>
+        <tr><td>Words lost from continuous fragmented speech</td><td>0 of 222</td></tr>
+        <tr><td>First translated word on the student’s screen</td><td>~600 ms</td></tr>
+        <tr><td>Automated assertions, across eight suites</td><td>100+</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>
+    <p class="wide"><strong>The one thing we did not build is speech.</strong> Recognition and synthesis run in the browser — free, keyless — because a lecturer should be able to walk into a hall and use this without anyone having provisioned anything.</p>
+    <p class="wide">A device with no Hindi voice installed produces silence. The app detects that and says so rather than failing quietly: open <code>/check</code> on any device to see. Phones almost always have the voices; Windows laptops often do not.</p>
+  </footer>
+
+</div>
+
+</body>
+</html>
