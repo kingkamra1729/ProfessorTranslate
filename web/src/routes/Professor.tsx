@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   LANGUAGES,
   type GlossaryTerm,
@@ -22,7 +22,13 @@ import {
   Field,
   LangPicker,
   LiveDot,
+  PageHeader,
   RunText,
+  Section,
+  SegmentedControl,
+  Stepper,
+  TextArea,
+  Wordmark,
 } from '../components/ui';
 
 /**
@@ -66,11 +72,40 @@ export default function Professor() {
  * Setup
  * ================================================================== */
 
+/**
+ * How a piece of course material was supplied.
+ *
+ * The three routes exist because course material lives in three places and a
+ * lecturer should not have to convert between them: the notes are a file, the
+ * reading list is a page, and the thing they actually want protected is often
+ * a paragraph they can type in thirty seconds.
+ */
+type SourceKind = 'text' | 'url' | 'file';
+
+/** One piece of material the professor has added, and what came out of it. */
+interface KnowledgeSource {
+  id: string;
+  kind: SourceKind;
+  /** What to call this in the list: a filename, a host, or "Written notes". */
+  label: string;
+  charactersRead: number;
+  terms: GlossaryTerm[];
+}
+
+const SOURCE_OPTIONS: Array<{ value: SourceKind; label: string }> = [
+  { value: 'text', label: 'Written notes' },
+  { value: 'url', label: 'Web page' },
+  { value: 'file', label: 'PDF or document' },
+];
+
 function Setup({
   onStarted,
 }: {
   onStarted: (lecture: LectureMeta, glossary: GlossaryTerm[]) => void;
 }) {
+  const [step, setStep] = useState(0);
+
+  /* Step 1 - the lecture itself. */
   const [title, setTitle] = useState('Eigenvalues and eigenvectors');
   const [course, setCourse] = useState('MA201');
   const [instructor, setInstructor] = useState('');
@@ -81,13 +116,14 @@ function Setup({
   const [selected, setSelected] = useState<string[]>(['linear-algebra']);
   const [extra, setExtra] = useState('');
 
-  const [importUrl, setImportUrl] = useState('');
-  const [importText, setImportText] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [imported, setImported] = useState<GlossaryTerm[]>([]);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importInfo, setImportInfo] = useState<string | null>(null);
+  /* Step 2 - the knowledge base. */
+  const [kind, setKind] = useState<SourceKind>('text');
+  const [draftText, setDraftText] = useState('');
+  const [draftUrl, setDraftUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [reading, setReading] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
 
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +134,28 @@ function Setup({
 
   const togglePack = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+
+  /**
+   * Every term the knowledge base has produced, first occurrence winning.
+   *
+   * Two sources covering the same course will overlap heavily - the syllabus
+   * and the notes both name the same theorem - and a duplicate entry is not
+   * merely untidy: the matcher builds one key per surface form, so the second
+   * copy is dead weight that also inflates the count shown to the professor.
+   */
+  const knowledgeTerms = useMemo(() => {
+    const seen = new Set<string>();
+    const out: GlossaryTerm[] = [];
+    for (const source of sources) {
+      for (const term of source.terms) {
+        const key = term.term.trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(term);
+      }
+    }
+    return out;
+  }, [sources]);
 
   /** Reads a file as base64 without pulling the whole thing through a string. */
   const readAsBase64 = (f: File): Promise<string> =>
@@ -113,32 +171,55 @@ function Setup({
       reader.readAsDataURL(f);
     });
 
-  const runImport = async () => {
-    setImporting(true);
-    setImportError(null);
-    setImportInfo(null);
+  const canRead =
+    (kind === 'text' && draftText.trim().length > 0) ||
+    (kind === 'url' && draftUrl.trim().length > 0) ||
+    (kind === 'file' && file !== null);
+
+  const addSource = async () => {
+    setReading(true);
+    setReadError(null);
     try {
       const payload: Parameters<typeof api.buildGlossary>[0] = { subject: title };
+      let label: string;
 
-      if (file) {
+      if (kind === 'file' && file) {
         payload.file = { name: file.name, base64: await readAsBase64(file) };
-      } else if (importUrl.trim()) {
-        payload.url = importUrl.trim();
+        label = file.name;
+      } else if (kind === 'url') {
+        payload.url = draftUrl.trim();
+        label = draftUrl.trim().replace(/^https?:\/\//, '');
       } else {
-        payload.text = importText.trim();
+        payload.text = draftText.trim();
+        label = 'Written notes';
       }
 
       const { terms, info } = await api.buildGlossary(payload);
-      setImported(terms);
-      setImportInfo(
-        `${terms.length} terms from ${info.detail} (${info.charactersRead.toLocaleString()} characters read)`,
-      );
+      setSources((prev) => [
+        ...prev,
+        {
+          id: `${kind}-${Date.now()}`,
+          kind,
+          label,
+          charactersRead: info.charactersRead,
+          terms,
+        },
+      ]);
+
+      // Clear only the input that was just consumed, so adding a second source
+      // of the same kind starts from empty rather than from the last one.
+      if (kind === 'file') setFile(null);
+      if (kind === 'url') setDraftUrl('');
+      if (kind === 'text') setDraftText('');
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed');
+      setReadError(err instanceof Error ? err.message : 'Could not read that material');
     } finally {
-      setImporting(false);
+      setReading(false);
     }
   };
+
+  const removeSource = (id: string) =>
+    setSources((prev) => prev.filter((source) => source.id !== id));
 
   const start = async () => {
     setStarting(true);
@@ -146,7 +227,7 @@ function Setup({
     try {
       const extraTerms = [
         ...extra.split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
-        ...imported.map((t) => t.term),
+        ...knowledgeTerms.map((t) => t.term),
       ];
 
       const { lecture, glossary } = await api.createLecture({
@@ -158,12 +239,12 @@ function Setup({
         extraTerms,
       });
 
-      // Imported terms carry aliases the plain extraTerms path cannot express,
-      // so they are pushed as a full glossary update rather than as bare
-      // strings. Aliases are what catch the term when speech recognition
+      // Knowledge-base terms carry aliases the plain extraTerms path cannot
+      // express, so they are pushed as a full glossary update rather than as
+      // bare strings. Aliases are what catch the term when speech recognition
       // mangles it, which is most of the time.
-      if (imported.length > 0) {
-        const merged = [...imported, ...glossary];
+      if (knowledgeTerms.length > 0) {
+        const merged = [...knowledgeTerms, ...glossary];
         await api.updateGlossary(lecture.id, merged);
         onStarted(lecture, merged);
       } else {
@@ -175,200 +256,311 @@ function Setup({
     }
   };
 
-  const totalTerms =
-    packs.filter((p) => selected.includes(p.id)).reduce((n, p) => n + p.termCount, 0) +
-    imported.length;
+  const packTerms = packs
+    .filter((p) => selected.includes(p.id))
+    .reduce((n, p) => n + p.termCount, 0);
+  const totalTerms = packTerms + knowledgeTerms.length;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <h1 className="mb-1 text-2xl font-bold text-ink-100">Start a lecture</h1>
-      <p className="mb-8 text-ink-400">
-        Everything here decides one thing: which words must survive translation untouched.
-      </p>
-
-      <Card className="mb-5 p-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Lecture title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <Field label="Course code" value={course} onChange={(e) => setCourse(e.target.value)} />
-          <Field
-            label="Your name"
-            value={instructor}
-            onChange={(e) => setInstructor(e.target.value)}
-            placeholder="Dr. Rao"
-          />
+    <div className="min-h-full bg-ink-950">
+      <header className="border-b border-ink-800 bg-ink-900">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4 sm:px-6">
+          <Link to="/">
+            <Wordmark size="sm" />
+          </Link>
+          <span className="text-sm text-ink-400">Professor</span>
         </div>
+      </header>
 
-        <div className="mt-5 border-t border-ink-800 pt-5">
-          <LangPicker
-            value={instructionLang}
-            onChange={setInstructionLang}
-            label="I will be speaking in"
-            size="sm"
-          />
-          <p className="mt-2 text-xs text-ink-500">
-            Technical terms will be preserved in this language for every student, whatever they
-            listen in.
-          </p>
-        </div>
-      </Card>
+      <main className="mx-auto max-w-3xl px-5 py-10 sm:px-6">
+        <Stepper
+          steps={['Lecture details', 'Knowledge base']}
+          current={step}
+          onGo={setStep}
+        />
 
-      <Card className="mb-5 p-5">
-        <h2 className="mb-1 font-semibold text-ink-100">Vocabulary to protect</h2>
-        <p className="mb-4 text-sm text-ink-400">
-          Terms in these packs are lifted out before translation and put back afterwards.
-        </p>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          {packs.map((pack) => {
-            const on = selected.includes(pack.id);
-            return (
-              <button
-                key={pack.id}
-                type="button"
-                onClick={() => togglePack(pack.id)}
-                aria-pressed={on}
-                className={`rounded-lg border p-3 text-left transition-colors ${
-                  on
-                    ? 'border-term-500 bg-term-900/40'
-                    : 'border-ink-600 bg-ink-800 hover:border-ink-500'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-ink-100">{pack.name}</span>
-                  <span className="shrink-0 text-xs text-ink-400">{pack.termCount}</span>
-                </div>
-                <p className="mt-1 text-xs text-ink-400">{pack.description}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-4">
-          <label htmlFor="extra" className="mb-1.5 block text-sm font-medium text-ink-300">
-            Additional terms
-          </label>
-          <textarea
-            id="extra"
-            value={extra}
-            onChange={(e) => setExtra(e.target.value)}
-            rows={2}
-            placeholder="Rayleigh quotient, Gram–Schmidt, spectral radius"
-            className="w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-500 focus:border-brand-500 focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-ink-400">Separated by commas or new lines.</p>
-        </div>
-      </Card>
-
-      <Card className="mb-5 p-5">
-        <h2 className="mb-1 font-semibold text-ink-100">
-          Build from your course material{' '}
-          <span className="text-sm font-normal text-ink-400">— optional</span>
-        </h2>
-        <p className="mb-4 text-sm text-ink-400">
-          Point this at a syllabus or notes page and it extracts the vocabulary, including the
-          ways speech recognition tends to mishear each term.
-        </p>
-
-        <div className="grid gap-3">
-          <div>
-            <label
-              htmlFor="course-file"
-              className="mb-1.5 block text-sm font-medium text-ink-300"
-            >
-              Upload lecture notes or a syllabus
-            </label>
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                id="course-file"
-                type="file"
-                accept=".pdf,.txt,.md,.markdown,.csv,.tsv,.html,.htm,.rtf,.tex"
-                onChange={(e) => {
-                  setFile(e.target.files?.[0] ?? null);
-                  setImportError(null);
-                  setImportInfo(null);
-                }}
-                className="block w-full text-sm text-ink-300 file:mr-3 file:rounded-lg file:border-0 file:bg-ink-700 file:px-4 file:py-2 file:text-sm file:font-medium file:text-ink-100 hover:file:bg-ink-600"
-              />
-            </div>
-            <p className="mt-1 text-xs text-ink-400">
-              PDF or text. A scanned PDF has no text in it — reading those from photographs
-              is a later feature.
-            </p>
-            {file && (
-              <p className="mt-1.5 text-xs text-term-400">
-                {file.name} · {(file.size / 1024).toFixed(0)} kB
-                <button
-                  onClick={() => setFile(null)}
-                  className="ml-2 text-ink-400 underline hover:text-ink-200"
-                >
-                  remove
-                </button>
-              </p>
-            )}
-          </div>
-
-          <Field
-            label="…or a course page URL"
-            value={importUrl}
-            onChange={(e) => setImportUrl(e.target.value)}
-            placeholder="https://…"
-            disabled={Boolean(file)}
-          />
-          <div>
-            <label htmlFor="paste" className="mb-1.5 block text-sm font-medium text-ink-300">
-              …or paste the text
-            </label>
-            <textarea
-              id="paste"
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-              rows={3}
-              className="w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-ink-100 focus:border-brand-500 focus:outline-none"
+        {step === 0 ? (
+          <>
+            <PageHeader
+              eyebrow="Step 1 of 2"
+              title="Lecture details"
+              description="These describe the class and decide which vocabulary is protected from translation."
             />
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={runImport}
-              disabled={importing || (!file && !importUrl.trim() && !importText.trim())}
-            >
-              {importing ? 'Reading…' : 'Extract terms'}
-            </Button>
-            {imported.length > 0 && (
-              <Badge tone="ok">{imported.length} terms found</Badge>
-            )}
-          </div>
-          {importError && <p className="text-sm text-live-500">{importError}</p>}
-          {importInfo && <p className="text-sm text-ok-500">{importInfo}</p>}
-          {imported.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {imported.slice(0, 24).map((t) => (
-                <span key={t.id} className="rounded bg-term-900 px-2 py-0.5 text-xs text-term-400">
-                  {t.term}
-                </span>
-              ))}
-              {imported.length > 24 && (
-                <span className="px-1 text-xs text-ink-500">+{imported.length - 24} more</span>
+
+            <div className="grid gap-4">
+              <Section
+                title="The class"
+                description="Shown to students when they join, so they know they are in the right lecture."
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Lecture title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
+                  <Field
+                    label="Course code"
+                    value={course}
+                    onChange={(e) => setCourse(e.target.value)}
+                  />
+                  <Field
+                    label="Your name"
+                    value={instructor}
+                    onChange={(e) => setInstructor(e.target.value)}
+                    placeholder="Dr. Rao"
+                  />
+                </div>
+
+                <div className="mt-5 border-t border-ink-800 pt-5">
+                  <LangPicker
+                    value={instructionLang}
+                    onChange={setInstructionLang}
+                    label="I will be speaking in"
+                    size="sm"
+                  />
+                  <p className="mt-2 text-xs text-ink-400">
+                    Technical terms are preserved in this language for every student, whatever
+                    they listen in.
+                  </p>
+                </div>
+              </Section>
+
+              <Section
+                title="Vocabulary to protect"
+                description="Terms in the packs you select are lifted out before translation and put back afterwards, so the model never has the chance to render them."
+                aside={<Badge tone="term">{packTerms} terms</Badge>}
+              >
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {packs.map((pack) => {
+                    const on = selected.includes(pack.id);
+                    return (
+                      <button
+                        key={pack.id}
+                        type="button"
+                        onClick={() => togglePack(pack.id)}
+                        aria-pressed={on}
+                        className={`rounded-md border p-3 text-left transition-colors ${
+                          on
+                            ? 'border-term-500 bg-term-900/50'
+                            : 'border-ink-600 bg-ink-900 hover:border-ink-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-ink-100">{pack.name}</span>
+                          <span className="shrink-0 text-xs text-ink-400">{pack.termCount}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-ink-400">{pack.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <TextArea
+                  className="mt-4"
+                  label="Additional terms"
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value)}
+                  rows={2}
+                  placeholder="Rayleigh quotient, Gram–Schmidt, spectral radius"
+                  hint="Separated by commas or new lines."
+                />
+              </Section>
+            </div>
+
+            <div className="mt-8 flex items-center justify-between gap-4 border-t border-ink-800 pt-6">
+              <Link to="/" className="text-sm text-ink-400 hover:text-ink-100">
+                &larr; Back
+              </Link>
+              <Button variant="primary" size="lg" onClick={() => setStep(1)}>
+                Continue to knowledge base
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <PageHeader
+              eyebrow="Step 2 of 2"
+              title="Knowledge base"
+              description="Anything you add here is read before the class starts, so the system knows what this lecture is about. It learns the subject vocabulary — including the ways speech recognition tends to mishear each term — and protects it, which is what lets a student follow the explanation without losing the words the textbook uses."
+            />
+
+            <div className="grid gap-4">
+              <Section
+                eyebrow="Optional"
+                title="Add course material"
+                description="Three ways in. Add as many as you like — a syllabus and last week's notes together give a better picture than either alone."
+              >
+                <SegmentedControl
+                  label="How to supply the material"
+                  value={kind}
+                  onChange={(next) => {
+                    setKind(next);
+                    setReadError(null);
+                  }}
+                  options={SOURCE_OPTIONS}
+                />
+
+                <div className="mt-5">
+                  {kind === 'text' && (
+                    <TextArea
+                      label="Paste or type the material"
+                      value={draftText}
+                      onChange={(e) => setDraftText(e.target.value)}
+                      rows={7}
+                      placeholder="Today we cover eigenvalues and eigenvectors, the characteristic polynomial, and diagonalisation. Reading: Strang chapter 6."
+                      hint="A lecture plan, an abstract, a reading list — anything that names the concepts this class will use."
+                    />
+                  )}
+
+                  {kind === 'url' && (
+                    <Field
+                      label="Course page or syllabus URL"
+                      value={draftUrl}
+                      onChange={(e) => setDraftUrl(e.target.value)}
+                      placeholder="https://example.edu/courses/ma201/week-6"
+                      type="url"
+                      inputMode="url"
+                      hint="The page is fetched and read as text. It has to be publicly reachable — a page behind a login will come back empty."
+                    />
+                  )}
+
+                  {kind === 'file' && (
+                    <div>
+                      <label
+                        htmlFor="course-file"
+                        className="mb-1.5 block text-sm font-medium text-ink-300"
+                      >
+                        Upload lecture notes or a syllabus
+                      </label>
+                      <input
+                        id="course-file"
+                        type="file"
+                        accept=".pdf,.txt,.md,.markdown,.csv,.tsv,.html,.htm,.rtf,.tex"
+                        onChange={(e) => {
+                          setFile(e.target.files?.[0] ?? null);
+                          setReadError(null);
+                        }}
+                        className="block w-full rounded-md border border-ink-600 bg-ink-900 text-sm text-ink-300 file:mr-3 file:border-0 file:border-r file:border-ink-600 file:bg-ink-800 file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-ink-200 hover:file:bg-ink-700"
+                      />
+                      <p className="mt-1.5 text-xs text-ink-400">
+                        PDF, Markdown or plain text. A scanned PDF has no text in it — reading
+                        those from photographs is a later feature.
+                      </p>
+                      {file && (
+                        <p className="mt-2 text-xs text-term-400">
+                          {file.name} · {(file.size / 1024).toFixed(0)} kB
+                          <button
+                            type="button"
+                            onClick={() => setFile(null)}
+                            className="ml-2 text-ink-400 underline hover:text-ink-200"
+                          >
+                            remove
+                          </button>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-ink-800 pt-5">
+                  <Button
+                    variant="secondary"
+                    onClick={addSource}
+                    disabled={reading || !canRead}
+                  >
+                    {reading ? 'Reading…' : 'Read and add'}
+                  </Button>
+                  <p className="text-xs text-ink-400">
+                    Nothing is sent to students. This only builds the term list.
+                  </p>
+                </div>
+
+                {readError && <p className="mt-3 text-sm text-live-500">{readError}</p>}
+              </Section>
+
+              {sources.length > 0 && (
+                <Section
+                  title="In the knowledge base"
+                  description="Terms found here are protected for the whole lecture and shown to students in the term list."
+                  aside={<Badge tone="ok">{knowledgeTerms.length} terms</Badge>}
+                >
+                  <ul className="divide-y divide-ink-800 border-y border-ink-800">
+                    {sources.map((source) => (
+                      <li
+                        key={source.id}
+                        className="flex items-center justify-between gap-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-ink-100">
+                            {source.label}
+                          </p>
+                          <p className="text-xs text-ink-400">
+                            {SOURCE_OPTIONS.find((o) => o.value === source.kind)?.label} ·{' '}
+                            {source.terms.length} terms ·{' '}
+                            {source.charactersRead.toLocaleString()} characters read
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeSource(source.id)}
+                          className="shrink-0 text-sm text-ink-400 underline hover:text-live-500"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {knowledgeTerms.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {knowledgeTerms.slice(0, 28).map((t) => (
+                        <span
+                          key={t.id}
+                          className="rounded bg-term-900 px-2 py-0.5 text-xs text-term-400"
+                        >
+                          {t.term}
+                        </span>
+                      ))}
+                      {knowledgeTerms.length > 28 && (
+                        <span className="px-1 text-xs text-ink-500">
+                          +{knowledgeTerms.length - 28} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </Section>
               )}
             </div>
-          )}
-        </div>
-      </Card>
 
-      {error && <p className="mb-4 text-sm text-live-500">{error}</p>}
+            {error && <p className="mt-5 text-sm text-live-500">{error}</p>}
 
-      <div className="flex items-center gap-4">
-        <Button variant="primary" size="lg" onClick={start} disabled={starting}>
-          {starting ? 'Starting…' : 'Start lecture'}
-        </Button>
-        <p className="text-sm text-ink-400">{totalTerms} terms will be protected</p>
-      </div>
+            {!isRecognitionSupported() && (
+              <p className="mt-5 text-sm text-brand-500">
+                This browser cannot capture speech. Use Chrome or Edge to teach; students can
+                listen in any browser.
+              </p>
+            )}
 
-      {!isRecognitionSupported() && (
-        <p className="mt-4 text-sm text-brand-400">
-          This browser cannot capture speech. Use Chrome or Edge to teach; students can listen in
-          any browser.
-        </p>
-      )}
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-ink-800 pt-6">
+              <button
+                type="button"
+                onClick={() => setStep(0)}
+                className="text-sm text-ink-400 hover:text-ink-100"
+              >
+                &larr; Lecture details
+              </button>
+              <div className="flex items-center gap-4">
+                <p className="text-sm text-ink-400">
+                  {totalTerms} {totalTerms === 1 ? 'term' : 'terms'} protected
+                </p>
+                <Button variant="primary" size="lg" onClick={start} disabled={starting}>
+                  {starting ? 'Starting…' : sources.length > 0 ? 'Start lecture' : 'Skip and start'}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }
@@ -596,7 +788,7 @@ function Live({
 
   return (
     <div className="min-h-full bg-ink-950">
-      <header className="sticky top-0 z-10 border-b border-ink-800 bg-ink-950/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-ink-800 bg-ink-900/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -713,7 +905,7 @@ function Live({
                       <p className="mt-1 text-sm text-ink-400">{viz.altText.en}</p>
                     )}
                     {viz.expression && (
-                      <code className="mt-2 block overflow-x-auto rounded bg-ink-950 px-2 py-1 text-xs text-term-400">
+                      <code className="mt-2 block overflow-x-auto rounded border border-ink-700 bg-ink-900 px-2 py-1 text-xs text-term-400">
                         {viz.expression}
                       </code>
                     )}
@@ -745,7 +937,7 @@ function Live({
 
           <div
             ref={scrollRef}
-            className="max-h-[calc(100vh-20rem)] min-h-[18rem] overflow-y-auto rounded-xl border border-ink-800 bg-ink-900/40 p-4"
+            className="max-h-[calc(100vh-20rem)] min-h-[18rem] overflow-y-auto rounded-lg border border-ink-800 bg-ink-900 p-4"
           >
             {lines.length === 0 && !interim && (
               <p className="py-16 text-center text-ink-500">

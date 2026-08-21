@@ -361,7 +361,7 @@ export default function Student() {
   return (
     <div className="flex min-h-full flex-col bg-ink-950">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-ink-800 bg-ink-950/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-ink-800 bg-ink-900/95 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -531,7 +531,7 @@ export default function Student() {
         {/* Transcript */}
         <div
           ref={scrollRef}
-          className="max-h-[calc(100vh-22rem)] min-h-[16rem] overflow-y-auto rounded-xl border border-ink-800 bg-ink-900/40 p-4"
+          className="max-h-[calc(100vh-22rem)] min-h-[16rem] overflow-y-auto rounded-lg border border-ink-800 bg-ink-900 p-4"
         >
           {lines.length === 0 && !interim && (
             <p className="py-12 text-center text-ink-500">

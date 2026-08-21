@@ -3,50 +3,77 @@
 /**
  * Suvidha's visual language.
  *
- * Two constraints drove this, and both come from the room it runs in:
+ * The register is institutional, not promotional: this sits alongside a
+ * university's timetable and grade portal, and it should look like it belongs
+ * there. White surfaces on a soft neutral ground, hairline rules, tight radii,
+ * one accent used sparingly, and no decoration that is not carrying meaning.
+ *
+ * Three constraints drove the specifics, and they come from the room it runs in:
  *
  *   - Subtitles are read from the back of a lecture hall, on a phone held at
  *     arm's length, often by someone already struggling with the language.
- *     Type is large, line length is short, contrast is high.
+ *     Type is large, line length is short, contrast is high. Light-on-dark
+ *     loses to dark-on-light at distance under hall lighting, which is why the
+ *     whole surface is light.
  *   - Some users cannot see the screen at all. Nothing here is the only carrier
  *     of meaning: protected terms are marked by weight and an underline as well
  *     as by colour, live state is announced to screen readers, and every
  *     graphic ships with a spoken description.
+ *   - Every colour below meets WCAG AA against the surface it is used on.
  */
 
 @theme {
-  --color-ink-950: #0a0d14;
-  --color-ink-900: #10141d;
-  --color-ink-800: #171d29;
-  --color-ink-700: #212938;
-  --color-ink-600: #2f3a4d;
-  --color-ink-500: #47536b;
-  --color-ink-400: #6b788f;
-  --color-ink-300: #97a2b6;
-  --color-ink-200: #c3cad8;
-  --color-ink-100: #e4e8ef;
+  /**
+   * Neutral scale, ordered by distance from the reader rather than by
+   * lightness: 950 is the page ground, 100 is the strongest text. Keeping that
+   * ordering means the scale reads the same way it did as a dark theme, and a
+   * component written against it does not care which way round the palette is.
+   */
+  --color-ink-950: #f5f6f8; /* page ground */
+  --color-ink-900: #ffffff; /* raised surface: cards, headers */
+  --color-ink-800: #e7e9ee; /* hairlines, input fill */
+  --color-ink-700: #dcdfe6; /* secondary controls */
+  --color-ink-600: #c3c8d2; /* input borders */
+  --color-ink-500: #868e9e; /* faintest legible text */
+  --color-ink-400: #656d7c; /* muted text */
+  --color-ink-300: #454d5c; /* labels */
+  --color-ink-200: #262d3a; /* body */
+  --color-ink-100: #111722; /* headings */
 
-  /* Saffron: the accent for live state and the professor's controls. */
-  --color-brand-500: #f0a44a;
-  --color-brand-400: #f5b96f;
-  --color-brand-600: #d98a2b;
+  /**
+   * A deep institutional blue, for primary actions and the professor's
+   * controls. Deliberately unsaturated and slightly dark: an accent that shouts
+   * makes every screen look like a landing page, and this one is used mid-
+   * lecture by someone who is not looking at it.
+   */
+  --color-brand-500: #1d4ed8;
+  --color-brand-400: #2563eb;
+  --color-brand-600: #1a3fa8;
 
   /* Teal marks protected terms - never used for anything else, so the
      colour itself becomes a signal the student learns to read. */
-  --color-term-400: #4fd1c5;
-  --color-term-500: #2cb8ab;
-  --color-term-900: #0d3b38;
+  --color-term-400: #0f6f68; /* the term itself, on white */
+  --color-term-500: #0d9488; /* borders and rules */
+  --color-term-900: #d9f2ef; /* the tint behind a term chip */
 
-  --color-live-500: #ef4d5a;
-  --color-ok-500: #4ade80;
+  --color-live-500: #c1273a;
+  --color-ok-500: #15803d;
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  /**
+   * A serif, used only for the wordmark and the landing headline.
+   *
+   * It is the one typographic decision that separates a piece of university
+   * software from a product page, and it is confined to two places so it reads
+   * as a masthead rather than as a theme.
+   */
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, ui-serif, serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-deva: 'Noto Sans Devanagari', 'Inter', sans-serif;
   --font-beng: 'Noto Sans Bengali', 'Inter', sans-serif;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -58,9 +85,10 @@ body,
 body {
   margin: 0;
   background: var(--color-ink-950);
-  color: var(--color-ink-100);
+  color: var(--color-ink-200);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Indic scripts need a taller line box than Latin at the same size, or the
@@ -87,9 +115,32 @@ body {
 .term {
   color: var(--color-term-400);
   font-weight: 600;
-  border-bottom: 1px dotted color-mix(in oklab, var(--color-term-400) 60%, transparent);
+  border-bottom: 1px dotted color-mix(in oklab, var(--color-term-400) 55%, transparent);
   padding-bottom: 1px;
   font-family: var(--font-sans);
+}
+
+/**
+ * Small caps section label.
+ *
+ * Used for the eyebrow above a section heading. Letter-spaced uppercase at a
+ * small size is the cheapest way to signal hierarchy without adding another
+ * type size or another colour.
+ */
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+}
+
+/* The single elevation in the system. Anything that needs to sit above the
+   page uses this and nothing heavier; stacked shadows read as decoration. */
+.raised {
+  box-shadow:
+    0 1px 2px rgb(17 23 34 / 0.04),
+    0 1px 1px rgb(17 23 34 / 0.03);
 }
 
 /* Focus states must stay visible; this app is used by keyboard and screen
@@ -131,7 +182,7 @@ body {
   }
 }
 
-/* Scrollbars, dark and unobtrusive. */
+/* Scrollbars, light and unobtrusive. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-ink-600) transparent;
