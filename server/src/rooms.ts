@@ -36,6 +36,15 @@ export interface Listener {
  */
 const DUPLICATE_WINDOW_MS = 4000;
 
+/**
+ * How long a finished sentence waits for the one before it.
+ *
+ * Ordering exists so audio is not played out of sequence, but it must not turn
+ * one slow translation into a frozen screen. Past this point the queue moves on
+ * and the straggler is delivered late, out of order, rather than not at all.
+ */
+const MAX_ORDER_WAIT_MS = 3500;
+
 function send(socket: WebSocket, msg: ServerMessage): void {
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(msg));
@@ -106,6 +115,8 @@ export class Room {
    * sequence numbers that were never theirs.
    */
   private dispatchedByLang = new Map<LangCode, Set<number>>();
+  /** When each sentence was sent for translation, for the ordering timeout. */
+  private dispatchedAt = new Map<number, number>();
   /** Suggestions awaiting the professor's decision. */
   private pendingSuggestions: TermSuggestion[] = [];
   /** Terms already offered, so a rejected one is not proposed again. */
@@ -307,6 +318,7 @@ export class Room {
 
     // Recorded before any await, so the dispatch record is complete for this
     // sequence before a translation for it can possibly come back.
+    this.dispatchedAt.set(seq, Date.now());
     for (const lang of targets) {
       const set = this.dispatchedByLang.get(lang) ?? new Set<number>();
       set.add(seq);
@@ -362,6 +374,15 @@ export class Room {
    * not hold up French.
    */
   private emitInOrder(lang: LangCode, seq: number, translation: Translation): void {
+    // Already overtaken: the ordering wait gave up on this one and moved on, so
+    // holding it any longer would mean losing it entirely. Late and out of
+    // order beats never.
+    if (seq < (this.nextEmitByLang.get(lang) ?? 0)) {
+      this.broadcastToStudents({ type: 'translation', translation }, lang);
+      this.sendToProfessors({ type: 'translation', translation });
+      return;
+    }
+
     const pending = this.pendingByLang.get(lang) ?? new Map<number, Translation>();
     pending.set(seq, translation);
     this.pendingByLang.set(lang, pending);
@@ -389,7 +410,18 @@ export class Room {
         continue;
       }
       const ready = pending.get(next);
-      if (!ready) break;
+      if (!ready) {
+        // Ordering must not become a stall. One slow translation at the head
+        // holds up every finished sentence behind it, and a student watching a
+        // frozen screen while the professor talks on has lost more than they
+        // would from hearing two sentences swapped.
+        const sentAt = this.dispatchedAt.get(next) ?? 0;
+        if (sentAt && Date.now() - sentAt > MAX_ORDER_WAIT_MS) {
+          next++;
+          continue;
+        }
+        break;
+      }
 
       pending.delete(next);
       this.broadcastToStudents({ type: 'translation', translation: ready }, lang);

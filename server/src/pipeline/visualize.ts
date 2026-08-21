@@ -280,7 +280,13 @@ export async function proposeVisualFor(room: Room): Promise<void> {
   // one number this product cannot afford to regress; a diagram suggestion can
   // always wait for the next cooldown.
   const gate = gateStatus();
-  if (gate.waiting > 0 || gate.inFlight >= gate.limit - 1) {
+  // Stand down only when the request budget is genuinely full or backed up.
+  //
+  // This previously required two free slots, which meant that in a room with
+  // three languages - three translations in flight against a limit of four -
+  // the condition was permanently true and no diagram was ever suggested. The
+  // feature was not broken; it simply never ran.
+  if (gate.waiting > 0 || gate.inFlight >= gate.limit) {
     return;
   }
 
