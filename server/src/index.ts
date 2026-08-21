@@ -362,6 +362,12 @@ wss.on('connection', (socket) => {
           break;
         }
 
+        case 'prof:pause': {
+          if (session.role !== 'professor' || !session.room) return;
+          await session.room.notePause(msg.t);
+          break;
+        }
+
         case 'prof:request-viz': {
           if (session.role !== 'professor' || !session.room) return;
           const viz = await requestVisual(msg.prompt, session.room.meta.id);

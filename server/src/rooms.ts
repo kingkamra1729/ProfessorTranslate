@@ -267,6 +267,25 @@ export class Room {
     }
   }
 
+  /**
+   * Handles the client reporting that the speaker has stopped.
+   *
+   * The segmenter holds back any tail that has not reached a boundary, waiting
+   * for the rest of the clause. When the professor actually stops talking there
+   * is no rest of the clause coming, and holding it is strictly worse than
+   * sending it short: the tail does not merely arrive late, it is prepended to
+   * the next sentence and garbles that one too.
+   *
+   * The pause signal is what tells us the difference between "mid-thought" and
+   * "finished". Nothing else on the server can know it - a recognition result
+   * looks identical either way.
+   */
+  async notePause(t: number): Promise<void> {
+    if (this.ended || this.buffer.isEmpty) return;
+    this.lastActivityAt = Date.now();
+    await this.flushBuffer(t);
+  }
+
   private async processChunk(text: string, t: number): Promise<void> {
     const utterance: Utterance = {
       id: randomUUID(),

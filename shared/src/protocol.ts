@@ -189,6 +189,16 @@ export interface TermSuggestion {
 export type ClientMessage =
   | { type: 'prof:join'; lectureId: string }
   | { type: 'prof:utterance'; text: string; final: boolean; t: number }
+  /**
+   * The professor has stopped speaking.
+   *
+   * Sent by the client's voice activity detector, which hears the pause well
+   * before the recogniser admits to it. It means "whatever is still buffered is
+   * a complete thought now" - so a trailing clause is translated immediately
+   * instead of waiting for the next sentence to arrive and being prepended to
+   * it, which garbles both.
+   */
+  | { type: 'prof:pause'; t: number }
   | { type: 'prof:end' }
   | { type: 'prof:viz-decision'; vizId: string; approve: boolean }
   | { type: 'prof:request-viz'; prompt: string }

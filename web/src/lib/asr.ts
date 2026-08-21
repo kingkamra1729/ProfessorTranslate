@@ -85,6 +85,15 @@ export interface RecognizerEvents {
   onStateChange?: (state: RecognizerState, detail?: string) => void;
   /** Non-fatal problems worth showing the professor, e.g. a muted mic. */
   onNotice?: (message: string) => void;
+  /**
+   * A recognition session has closed and every final it held has been
+   * delivered.
+   *
+   * Fires after the results, which is the ordering that matters: a caller
+   * flushing server-side state on this signal can be sure it is flushing text
+   * that has already arrived, not racing it.
+   */
+  onSegmentEnd?: () => void;
 }
 
 export class Recognizer {
@@ -215,6 +224,9 @@ export class Recognizer {
 
     rec.onend = () => {
       this.recognition = null;
+      // Chrome delivers any outstanding final results before `onend`, so by the
+      // time we are here the segment is genuinely complete.
+      this.events.onSegmentEnd?.();
       if (!this.wantRunning) {
         this.setState('idle');
         return;
@@ -246,6 +258,29 @@ export class Recognizer {
       // `start()` throws if a previous session has not fully released. `onend`
       // will fire and drive the restart.
       this.recognition = null;
+    }
+  }
+
+  /**
+   * Closes the current segment without stopping capture.
+   *
+   * This is the lever voice activity detection pulls. Chrome decides for itself
+   * when an utterance has ended, and it waits out a long silence first - so the
+   * last clause of every sentence sits uncommitted for around a second after
+   * the professor has already stopped talking. Calling `stop()` on the session
+   * forces the pending final out immediately; `onend` then restarts capture, as
+   * it already does after every natural pause.
+   *
+   * Cheap when it fires on a real pause, wasteful when it fires on a breath, so
+   * the caller is responsible for only calling it when there is something
+   * uncommitted to flush.
+   */
+  endSegment(): void {
+    if (!this.wantRunning || !this.recognition) return;
+    try {
+      this.recognition.stop();
+    } catch {
+      /* Already closing; `onend` will restart. */
     }
   }
 

@@ -12,7 +12,8 @@ import {
   type VizSpec,
 } from '@suvidha/shared';
 import { api } from '../lib/api';
-import { Recognizer, isRecognitionSupported, type RecognizerState } from '../lib/asr';
+import { isRecognitionSupported, type RecognizerState } from '../lib/asr';
+import { SpeechCapture } from '../lib/capture';
 import { LectureSocket, type SocketState } from '../lib/ws';
 import {
   Badge,
@@ -595,9 +596,11 @@ function Live({
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [vizPrompt, setVizPrompt] = useState('');
   const [ended, setEnded] = useState(false);
+  const [level, setLevel] = useState(0);
+  const [speaking, setSpeaking] = useState(false);
 
   const socketRef = useRef<LectureSocket | null>(null);
-  const recognizerRef = useRef<Recognizer | null>(null);
+  const captureRef = useRef<SpeechCapture | null>(null);
   const startedAt = useRef(Date.now());
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -694,8 +697,8 @@ function Live({
    * ---------------------------------------------------------------- */
 
   const startMic = () => {
-    if (recognizerRef.current) return;
-    const rec = new Recognizer(lecture?.instructionLang ?? 'en', {
+    if (captureRef.current) return;
+    const capture = new SpeechCapture(lecture?.instructionLang ?? 'en', {
       onResult: (text, isFinal) => {
         socketRef.current?.send({
           type: 'prof:utterance',
@@ -704,23 +707,38 @@ function Live({
           t: Date.now() - startedAt.current,
         });
       },
+      // The speaker has stopped. Tells the server to translate whatever clause
+      // is still buffered instead of holding it for a continuation that is not
+      // coming.
+      onPause: () => {
+        socketRef.current?.send({
+          type: 'prof:pause',
+          t: Date.now() - startedAt.current,
+        });
+      },
       onStateChange: (state, detail) => {
         setMicState(state);
         setMicDetail(detail ?? null);
       },
       onNotice: setNotice,
+      onLevel: (value, speaking) => {
+        setLevel(value);
+        setSpeaking(speaking);
+      },
     });
-    recognizerRef.current = rec;
-    rec.start();
+    captureRef.current = capture;
+    capture.start();
   };
 
   const stopMic = () => {
-    recognizerRef.current?.dispose();
-    recognizerRef.current = null;
+    captureRef.current?.dispose();
+    captureRef.current = null;
     setMicState('idle');
+    setLevel(0);
+    setSpeaking(false);
   };
 
-  useEffect(() => () => recognizerRef.current?.dispose(), []);
+  useEffect(() => () => captureRef.current?.dispose(), []);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -809,9 +827,15 @@ function Live({
           </div>
 
           {!ended ? (
-            <Button variant={listening ? 'danger' : 'primary'} onClick={listening ? stopMic : startMic}>
-              {listening ? '⏸ Pause' : '🎙 Start speaking'}
-            </Button>
+            <div className="flex items-center gap-3">
+              {listening && <MicLevel level={level} speaking={speaking} />}
+              <Button
+                variant={listening ? 'danger' : 'primary'}
+                onClick={listening ? stopMic : startMic}
+              >
+                {listening ? 'Pause' : 'Start speaking'}
+              </Button>
+            </div>
           ) : (
             <Button onClick={() => navigate(`/replay/${code}`)}>View recording</Button>
           )}
@@ -1022,6 +1046,43 @@ function Live({
             </Button>
           )}
         </aside>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Microphone level, and whether the detector currently calls it speech.
+ *
+ * Worth the pixels because the two failure modes it distinguishes look
+ * identical from the lectern: a microphone that is muted, and a room so loud
+ * that the detector never resolves a pause. In the first the bar never moves;
+ * in the second it never falls. Both end with a class hearing nothing, and
+ * neither is otherwise visible until someone complains.
+ */
+function MicLevel({ level, speaking }: { level: number; speaking: boolean }) {
+  const pct = Math.round(Math.min(1, level) * 100);
+  return (
+    <div className="hidden w-28 sm:block">
+      <div className="flex items-center justify-between">
+        <span className="text-[0.6875rem] font-medium text-ink-400">
+          {speaking ? 'Speaking' : 'Quiet'}
+        </span>
+      </div>
+      <div
+        className="mt-1 h-1.5 overflow-hidden rounded-full bg-ink-800"
+        role="meter"
+        aria-label="Microphone level"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-75 ${
+            speaking ? 'bg-ok-500' : 'bg-ink-600'
+          }`}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
