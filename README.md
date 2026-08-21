@@ -2,6 +2,18 @@
 
 **Live lecture translation that leaves the technical vocabulary alone.**
 
+> ### Status: under active development
+>
+> This was built during a one-week hackathon and it is a prototype, not a product.
+> The pipeline works and is measured — the numbers below are real — but it has not been
+> through a live lecture with a real class, and there are known rough edges listed under
+> [Known limits](#known-limits).
+>
+> **Do not rely on it for a lecture that matters yet.** Speech recognition accuracy on
+> accented English in a noisy hall is the weakest link, some devices have no voice installed
+> for some languages, and a mistranslated sentence in a real class costs a student more than
+> no translation at all. Try it, break it, tell us what broke.
+
 A student who thinks in Hindi, Bengali or French sits through a lecture delivered in
 English. What they lose is not the terminology — they can look that up. What they lose is
 the *explanation*: the sentence the lecturer improvised to make the idea land, the aside

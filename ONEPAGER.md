@@ -7,17 +7,35 @@ Repository → https://github.com/kingkamra1729/ProfessorTranslate
 
 ---
 
+## Where this came from
+
+I did not start from a dataset. I started from the people sitting around me.
+
+My college takes students from every part of the country, and we arrive speaking different
+mother tongues into the same lecture hall, where everything is delivered in English. I
+watched classmates who had cleared the same entrance exam I had — who understood the subject
+perfectly well — fall behind because of the language it arrived in. They would ask me
+afterwards what the professor had said. Not what a word meant. What the *sentence* meant.
+
+Then I saw the live interpretation used in parliament, where a speech reaches every member
+in their own language as it is being given, and the question became obvious: why does a
+lecture hall not have this?
+
 ## Who this is for
 
-A first-year engineering student in an Indian college who thinks in Hindi or Bengali.
+**Any student sitting in a lecture delivered in someone else's language.**
 
-They passed the entrance exam. They can read the textbook, slowly, with a dictionary. But
-the lecture is delivered in English at speaking pace, and by the time they have decoded one
-sentence the professor is three sentences further on. They are not failing because the
-material is hard. They are failing because it is arriving in a language they are still
-translating in their head.
+I saw this in India, but nothing about the problem is Indian. It is the exchange student in
+Berlin, the refugee finishing a degree in a country they arrived in last year, the
+engineering student anywhere whose textbooks are in English and whose thinking is not.
 
-This is not a hypothetical user. It is most of a classroom, in most colleges in India.
+Wherever education is delivered in a language of prestige rather than a language of home,
+the same students fall behind for the same reason — and it is never because the material was
+beyond them.
+
+The system is built language-agnostically. It runs today in English, Hindi, Bengali and
+French; adding another is one entry in a config file plus a handful of example sentences to
+pin the register.
 
 ## The barrier we are removing
 
@@ -68,21 +86,47 @@ translation that sends a student to a dictionary has failed at the one job it ha
 listens for subject vocabulary it does not yet protect and offers it to the professor
 mid-lecture. Accepting one protects it for the rest of the class.
 
-## Two things it also does
+## Everything it does
 
-**Diagrams.** A lecturer saying *"so this decays and then oscillates"* is describing a
-picture the class cannot see. Wolfram renders it — but only after the professor approves it,
-because an unreviewed generated diagram on two hundred screens is a way to teach the wrong
-thing very efficiently.
+### Working now
 
-**It works for students who cannot see the board.** Every diagram carries a spoken
-description, translated by the same term-preserving path. Recordings are archived as *text*,
-not audio — so they can be re-voiced later in a language nobody chose during the lecture, at
-any speed, or read by a screen reader.
+- **Live translation to an earpiece.** The professor speaks; each student hears their own
+  language, seconds behind.
+- **Technical terms never translated** — in the subtitles and in the audio, spoken by a
+  second voice.
+- **Every student picks their own language,** switchable mid-sentence, in one shared lecture.
+- **Subtitles on screen** with protected vocabulary marked, alongside what the professor
+  actually said.
+- **Diagrams from the lecture itself.** Wolfram renders the plot a lecturer is describing —
+  published only once the professor approves it, because an unreviewed generated diagram on
+  two hundred screens teaches the wrong thing very efficiently.
+- **Spoken descriptions of every diagram,** translated the same way, so a student who cannot
+  see the board hears what it shows.
+- **Recorded lectures,** archived as text rather than audio — so they replay in a language
+  nobody chose that day, at any speed, or through a screen reader.
+- **Course files build the glossary.** Upload a PDF of last year's notes, or point it at a
+  syllabus URL.
+- **A pre-flight check** that tells a professor whether the room's hardware can actually do
+  this, before the class arrives.
+
+### Designed, not yet built
+
+- **Animated demonstrations.** Diagrams are static plots today. A wave that actually
+  oscillates and a vector that actually rotates is the next thing to build.
+- **Generated video** for concepts that need more than a plot, for students following on a
+  computer rather than a phone.
+- **Definitions preserved like terms.** Right now only the vocabulary is protected; a spoken
+  definition is still translated, and it should not be.
+- **Extraction from photographs of handwritten notes,** so a glossary can be built from what
+  is actually on the board.
+- **More languages,** and instruction in languages other than English.
+- **Cloud speech recognition** as an option for noisy halls and strong accents, behind the
+  same interface as the browser one.
+- **Recordings that survive a redeploy,** which today they do not.
 
 ## What is real
 
-Everything above runs. Nothing is mocked.
+Everything in *Working now* runs. Nothing is mocked.
 
 | | |
 |---|---|
@@ -94,6 +138,10 @@ Everything above runs. Nothing is mocked.
 The one thing we did not build is speech. Recognition and synthesis run in the browser,
 free and without a key, because a lecturer should be able to walk into a hall and use this
 without anyone having provisioned anything.
+
+**This is a prototype, not a product.** It was built in a week and has not yet faced a
+real class. The pipeline is measured and the numbers above are real, but a mistranslated
+sentence costs a student more than no translation would.
 
 **Known limit, stated plainly:** a device with no Hindi voice installed produces silence.
 The app detects this and says so rather than failing quietly — open `/check` on any device

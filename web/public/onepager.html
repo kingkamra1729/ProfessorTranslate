@@ -85,12 +85,7 @@
 
   .masthead { display: flex; flex-direction: column; gap: 1rem; }
 
-  .wordmark {
-    display: flex;
-    align-items: baseline;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
+  .wordmark { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
   .wordmark b {
     font-family: Spectral, Georgia, serif;
     font-size: 2.1rem;
@@ -132,14 +127,9 @@
     border: 1px solid var(--rule);
     border-radius: 3px;
     padding: 1.75rem 1.5rem 1.4rem;
-    overflow-x: auto;
   }
 
-  .said {
-    font-size: 0.86rem;
-    color: var(--ink-faint);
-    margin: 0 0 1.1rem;
-  }
+  .said { font-size: 0.86rem; color: var(--ink-faint); margin: 0 0 1.1rem; }
   .said b { color: var(--ink-soft); font-weight: 500; }
 
   /* Wraps rather than scrolling. This is the one line the whole page exists to
@@ -156,11 +146,7 @@
   }
 
   /* Each span is glossed underneath with the voice that speaks it. */
-  .v {
-    position: relative;
-    padding-bottom: 2px;
-    border-bottom: 2px solid var(--hindi);
-  }
+  .v { position: relative; padding-bottom: 2px; border-bottom: 2px solid var(--hindi); }
   .v.en {
     color: var(--term);
     font-family: "IBM Plex Sans", sans-serif;
@@ -223,6 +209,18 @@
   }
   .deva { font-family: "Noto Sans Devanagari", sans-serif; }
 
+  /* The founding observation, set apart because it is the reason any of this
+     exists rather than a feature of it. */
+  .origin {
+    border-left: 2px solid var(--term);
+    padding-left: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .origin p { font-family: Spectral, Georgia, serif; font-size: 1.05rem; max-width: 33rem; }
+  .origin p:first-of-type { font-size: 1.18rem; }
+
   /* The counter-example: what an ordinary translator does. */
   .wrong {
     border-left: 2px solid var(--rule);
@@ -231,11 +229,7 @@
     flex-direction: column;
     gap: 0.45rem;
   }
-  .wrong .bad {
-    font-family: "Noto Sans Devanagari", sans-serif;
-    font-size: 1.15rem;
-    color: var(--ink);
-  }
+  .wrong .bad { font-family: "Noto Sans Devanagari", sans-serif; font-size: 1.15rem; color: var(--ink); }
   .wrong small { font-size: 0.82rem; color: var(--ink-faint); }
 
   /* ---------- mechanism ---------- */
@@ -244,13 +238,49 @@
   @media (min-width: 40rem) { .mech { grid-template-columns: 1fr 1fr; gap: 1.4rem 2rem; } }
 
   .mech > div { display: flex; flex-direction: column; gap: 0.35rem; }
-  .mech h3 {
-    margin: 0;
-    font-size: 0.94rem;
-    font-weight: 600;
-    color: var(--ink);
-  }
+  .mech h3 { margin: 0; font-size: 0.94rem; font-weight: 600; color: var(--ink); }
   .mech p { font-size: 0.9rem; color: var(--ink-soft); max-width: none; }
+
+  /* ---------- capability ledger ---------- *
+     The marker is not decoration: filled means it runs today, hollow means it
+     is designed and not yet built. A reader can tell the two apart at a glance,
+     which is the honest way to show an unfinished product.                     */
+
+  .ledger { display: grid; gap: 1.75rem; }
+  @media (min-width: 40rem) { .ledger { grid-template-columns: 1fr 1fr; gap: 2rem; } }
+
+  .ledger h3 {
+    margin: 0 0 0.7rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 400;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .ledger ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+  .ledger li {
+    position: relative;
+    padding-left: 1.15rem;
+    font-size: 0.89rem;
+    line-height: 1.5;
+  }
+  .ledger li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.5em;
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+  }
+  .built li::before { background: var(--term); }
+  .next li::before { border: 1px solid var(--ink-faint); }
+  .ledger b { font-weight: 600; }
+  .next li { color: var(--ink-soft); }
 
   /* ---------- measurements ---------- */
 
@@ -271,11 +301,7 @@
     padding: 0 0 0.5rem;
     border-bottom: 1px solid var(--rule);
   }
-  .metrics td {
-    padding: 0.62rem 0;
-    border-bottom: 1px solid var(--rule-soft);
-    vertical-align: baseline;
-  }
+  .metrics td { padding: 0.62rem 0; border-bottom: 1px solid var(--rule-soft); vertical-align: baseline; }
   .metrics td:last-child {
     text-align: right;
     font-family: "IBM Plex Mono", monospace;
@@ -331,10 +357,20 @@
   </div>
 
   <section>
+    <p class="eyebrow">Where this came from</p>
+    <div class="origin">
+      <p>I did not start from a dataset. I started from the people sitting around me.</p>
+      <p>My college takes students from every part of the country, and we arrive speaking different mother tongues into the same lecture hall, where everything is delivered in English. I watched classmates who had cleared the same entrance exam I had — who understood the subject perfectly well — fall behind because of the language it arrived in. They would ask me afterwards what the professor had said. Not what a word meant. What the <em>sentence</em> meant.</p>
+      <p>Then I saw the live interpretation used in parliament, where a speech reaches every member in their own language as it is being given, and the question became obvious: why does a lecture hall not have this?</p>
+    </div>
+  </section>
+
+  <section>
     <p class="eyebrow">Who this is for</p>
-    <h2>A first-year engineering student who thinks in Hindi or Bengali</h2>
-    <p>They passed the entrance exam. They can read the textbook, slowly. But the lecture is delivered in English at speaking pace, and by the time they have decoded one sentence the professor is three sentences further on.</p>
-    <p>They are not failing because the material is hard. They are failing because it arrives in a language they are still translating in their head. This is not a hypothetical user — it is most of a classroom, in most colleges in India.</p>
+    <h2>Any student sitting in a lecture delivered in someone else’s language</h2>
+    <p>I saw this in India, but nothing about the problem is Indian. It is the exchange student in Berlin, the refugee finishing a degree in a country they arrived in last year, the engineering student anywhere whose textbooks are in English and whose thinking is not.</p>
+    <p>Wherever education is delivered in a language of prestige rather than a language of home, the same students fall behind for the same reason — and it is never because the material was beyond them.</p>
+    <p>The system is built language-agnostically. It runs today in English, Hindi, Bengali and French; adding another is one entry in a config file plus a handful of example sentences to pin the register.</p>
   </section>
 
   <section>
@@ -346,7 +382,7 @@
       <span class="bad" lang="hi">तो इस आव्यूह का अभिलक्षणिक मान…</span>
       <small>What an ordinary translator produces. Correct, literary, and a word that appears in no textbook, no exam, and no job interview.</small>
     </div>
-    <p>The student now understands the sentence and cannot answer the question. The sentence got easier; the degree got harder.</p>
+    <p>The student now understands the sentence and cannot answer the question. The sentence got easier; the degree got harder. We are not trying to spare anyone from learning English — we are trying to stop the language from standing between them and the subject while they do.</p>
   </section>
 
   <section>
@@ -363,7 +399,7 @@
       </div>
       <div>
         <h3>It speaks the way people speak</h3>
-        <p>Real classroom Hindi code-mixes: <span class="deva">अब देखते हैं कि</span> <code>determinant</code> <code>zero</code> <span class="deva">हो तो क्या होता है</span>. A translation that sends a student to a dictionary has failed at its one job.</p>
+        <p>Real classroom speech code-mixes: <span class="deva">अब देखते हैं कि</span> <code>determinant</code> <code>zero</code> <span class="deva">हो तो क्या होता है</span>. A translation that sends a student to a dictionary has failed at its one job.</p>
       </div>
       <div>
         <h3>It catches its own gaps</h3>
@@ -373,15 +409,41 @@
   </section>
 
   <section>
-    <p class="eyebrow">Beyond translation</p>
-    <h2>Built for the student who also cannot see the board</h2>
-    <p>Every diagram carries a spoken description, translated by the same term-preserving path — so a plot is heard, not missed. Diagrams are rendered by Wolfram but published only once the professor approves them, because an unreviewed generated diagram on two hundred screens teaches the wrong thing very efficiently.</p>
-    <p>Recordings are archived as <em>text</em>, not audio, so a lecture can be re-voiced afterwards in a language nobody chose that day, at any speed, or read by a screen reader.</p>
+    <p class="eyebrow">Everything it does</p>
+    <h2>What runs today, and what is designed but not yet built</h2>
+    <div class="ledger">
+      <div>
+        <h3>Working now</h3>
+        <ul class="built">
+          <li><b>Live translation to an earpiece.</b> The professor speaks; each student hears their own language, seconds behind.</li>
+          <li><b>Technical terms never translated</b> — in the subtitles and in the audio, spoken by a second voice.</li>
+          <li><b>Every student picks their own language,</b> switchable mid-sentence, in one shared lecture.</li>
+          <li><b>Subtitles on screen</b> with protected vocabulary marked, alongside what the professor actually said.</li>
+          <li><b>Diagrams from the lecture itself.</b> Wolfram renders the plot a lecturer is describing — published only once the professor approves it.</li>
+          <li><b>Spoken descriptions of every diagram,</b> translated the same way, so a student who cannot see the board hears what it shows.</li>
+          <li><b>Recorded lectures,</b> archived as text rather than audio — so they replay in a language nobody chose that day, at any speed, or through a screen reader.</li>
+          <li><b>Course files build the glossary.</b> Upload a PDF of last year’s notes, or point it at a syllabus URL.</li>
+          <li><b>A pre-flight check</b> that tells a professor whether the room’s hardware can actually do this, before the class arrives.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Designed, not yet built</h3>
+        <ul class="next">
+          <li><b>Animated demonstrations.</b> Diagrams are static plots today. A wave that actually oscillates and a vector that actually rotates is the next thing to build.</li>
+          <li><b>Generated video</b> for concepts that need more than a plot, for students following on a computer rather than a phone.</li>
+          <li><b>Definitions preserved like terms.</b> Right now only the vocabulary is protected; a spoken definition is still translated, and it should not be.</li>
+          <li><b>Extraction from photographs of handwritten notes,</b> so a glossary can be built from what is actually on the board.</li>
+          <li><b>More languages,</b> and instruction in languages other than English.</li>
+          <li><b>Cloud speech recognition</b> as an option for noisy halls and strong accents, behind the same interface as the browser one.</li>
+          <li><b>Recordings that survive a redeploy,</b> which today they do not.</li>
+        </ul>
+      </div>
+    </div>
   </section>
 
   <section>
     <p class="eyebrow">What is real</p>
-    <h2>Everything above runs. Nothing is mocked.</h2>
+    <h2>Everything in the left column runs. Nothing is mocked.</h2>
     <table class="metrics">
       <thead>
         <tr><th scope="col">Measured</th><th scope="col">Result</th></tr>
@@ -396,8 +458,8 @@
   </section>
 
   <footer>
-    <p class="wide"><strong>The one thing we did not build is speech.</strong> Recognition and synthesis run in the browser — free, keyless — because a lecturer should be able to walk into a hall and use this without anyone having provisioned anything.</p>
-    <p class="wide">A device with no Hindi voice installed produces silence. The app detects that and says so rather than failing quietly: open <code>/check</code> on any device to see. Phones almost always have the voices; Windows laptops often do not.</p>
+    <p class="wide"><strong>This is a prototype, not a product.</strong> It was built in a week and has not yet faced a real class. The pipeline is measured and the numbers above are real, but speech recognition on accented English in a noisy hall is the weakest link, and a mistranslated sentence costs a student more than no translation would.</p>
+    <p class="wide"><strong>The one thing we did not build is speech.</strong> Recognition and synthesis run in the browser — free, keyless — because a lecturer should be able to walk into a hall and use this without anyone having provisioned anything. A device with no voice installed for a language produces silence; the app detects that and says so rather than failing quietly. Open <code>/check</code> on any device to see.</p>
   </footer>
 
 </div>
